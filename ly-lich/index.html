@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lý Lịch Học Sinh</title>
+<meta name="description" content="Điền lý lịch học sinh: nơi sinh, chỗ ở, thông tin cha mẹ.">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f3f1ea; --card: #fffdf8; --ink: #1f261f; --muted: #687064; --line: #e3ddcf;
+    --accent: #1f6f5c; --accent-2: #2b8a72; --accent-ink: #fff; --accent-soft: #e2efe9;
+    --warn: #9a5b00; --warn-soft: #fbf0dc; --err: #a33a2a; --err-soft: #fbe6e2; --ok: #2f7a3d; --ok-soft: #e4f3e6;
+    --shadow: 0 1px 2px rgba(30,40,30,.06), 0 6px 20px rgba(30,40,30,.06);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141815; --card: #1d221e; --ink: #e8ece4; --muted: #a1a99c; --line: #323a33;
+      --accent: #5bbf9f; --accent-2: #74cfb1; --accent-ink: #0e1914; --accent-soft: #213630;
+      --warn: #f0b55a; --warn-soft: #382d1b; --err: #ff8a78; --err-soft: #3a211d; --ok: #7fd18e; --ok-soft: #1f3424;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141815; --card: #1d221e; --ink: #e8ece4; --muted: #a1a99c; --line: #323a33;
+    --accent: #5bbf9f; --accent-2: #74cfb1; --accent-ink: #0e1914; --accent-soft: #213630;
+    --warn: #f0b55a; --warn-soft: #382d1b; --err: #ff8a78; --err-soft: #3a211d; --ok: #7fd18e; --ok-soft: #1f3424;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; min-height: 100vh; }
+  button, input { font: inherit; color: inherit; }
+  .hero { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink);
+          padding: 26px 16px 64px; }
+  .hero .in { max-width: 760px; margin: 0 auto; display: flex; gap: 14px; align-items: center; }
+  .hero .logo { width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,.18);
+                display: grid; place-items: center; font-size: 26px; flex: none; }
+  .hero h1 { margin: 0; font-size: 24px; line-height: 1.2; letter-spacing: -.01em; }
+  .hero p { margin: 2px 0 0; opacity: .9; font-size: 14.5px; }
+  main { max-width: 760px; margin: -44px auto 0; padding: 0 16px 48px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+          box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 4px; font-size: 19px; }
+  .hint { color: var(--muted); margin: 0 0 14px; font-size: 14.5px; }
+  .crumbs { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .back { border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 999px;
+          padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
+  .crumbs b { font-size: 17px; }
+  .field { display: grid; gap: 5px; margin-bottom: 14px; }
+  .field label { font-weight: 600; font-size: 14.5px; }
+  .field label .req { color: var(--err); }
+  .field small { color: var(--muted); font-size: 13px; }
+  input[type=text], input[type=password], input[type=tel], input[type=search] {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px;
+    padding: 11px 13px; outline: none; transition: border-color .15s, box-shadow .15s; font-size: 16px; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input.bad { border-color: var(--err); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .row2, .row3 { grid-template-columns: 1fr; gap: 0; } }
+  .btn { border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 700; cursor: pointer;
+         background: var(--accent); color: var(--accent-ink); }
+  .btn:disabled { opacity: .5; cursor: progress; }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .btns .btn { flex: 1 1 180px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14.5px; color: var(--muted); margin: 4px 0 14px; }
+  .check input { accent-color: var(--accent); width: 17px; height: 17px; }
+  .msg { margin-top: 10px; font-size: 14.5px; border-radius: 10px; padding: 0; }
+  .msg.err { color: var(--err); background: var(--err-soft); padding: 9px 12px; }
+  /* lớp */
+  .classes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .cls { text-align: left; border: 1.5px solid var(--line); background: var(--bg); border-radius: 14px;
+         padding: 14px; cursor: pointer; transition: transform .1s, border-color .15s; }
+  .cls:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .cls b { font-size: 20px; display: block; }
+  .cls span { font-size: 13.5px; color: var(--muted); }
+  .bar { height: 7px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+  /* học sinh */
+  .tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .tools input { flex: 1 1 200px; }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+  .seg button { border: 0; background: transparent; padding: 7px 12px; border-radius: 9px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  .seg button.on { background: var(--card); color: var(--accent); font-weight: 700; box-shadow: var(--shadow); }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li button { width: 100%; display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center;
+         text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 11px 4px; cursor: pointer; }
+  .list li button:hover { background: var(--accent-soft); }
+  .list .stt { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .list .nm { font-weight: 600; }
+  .list .ns { display: block; font-size: 13px; color: var(--muted); font-weight: 400; }
+  .badge { font-size: 12.5px; border-radius: 99px; padding: 3px 10px; white-space: nowrap; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.no { background: var(--warn-soft); color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 18px 0; }
+  /* form */
+  .who { display: flex; gap: 14px; align-items: center; background: var(--accent-soft); border-radius: 14px; padding: 14px; margin-bottom: 16px; }
+  .avatar { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+            display: grid; place-items: center; font-weight: 800; font-size: 18px; flex: none; }
+  .who b { font-size: 18px; display: block; line-height: 1.25; }
+  .who span { font-size: 14px; color: var(--muted); }
+  fieldset { border: 0; padding: 0; margin: 0 0 6px; }
+  legend { font-weight: 800; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
+           margin-bottom: 10px; padding: 0; display: flex; gap: 8px; align-items: center; }
+  .stamp { font-size: 13px; color: var(--muted); margin: -6px 0 12px; }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(120px);
+           background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 12px; font-weight: 600;
+           box-shadow: var(--shadow); transition: transform .25s; z-index: 9; max-width: calc(100% - 32px); }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .spin { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent;
+          border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -3px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="in">
+    <div class="logo">📝</div>
+    <div>
+      <h1>Lý lịch học sinh</h1>
+      <p id="sub">Điền thông tin để hoàn thiện sổ đăng bộ của nhà trường</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- 1. Mã truy cập -->
+  <section class="card" id="vLogin">
+    <h2>Mã truy cập</h2>
+    <p class="hint">Nhập mã do giáo viên chủ nhiệm hoặc nhà trường cung cấp.</p>
+    <form id="fLogin" autocomplete="off">
+      <div class="field">
+        <input type="password" id="pass" placeholder="Mã truy cập" required>
+      </div>
+      <label class="check"><input type="checkbox" id="remember" checked> Ghi nhớ trên máy này</label>
+      <button class="btn" id="btnLogin" style="width:100%">Vào điền lý lịch</button>
+      <div class="msg" id="mLogin"></div>
+    </form>
+  </section>
+
+  <!-- 2. Chọn lớp -->
+  <section class="card" id="vClasses" hidden>
+    <div class="crumbs"><b>Chọn lớp</b></div>
+    <div class="classes" id="classList"></div>
+    <div class="msg" id="mClasses"></div>
+  </section>
+
+  <!-- 3. Chọn học sinh -->
+  <section class="card" id="vStudents" hidden>
+    <div class="crumbs"><button class="back" data-go="classes">← Lớp</button><b id="stTitle"></b></div>
+    <div class="bar" style="margin:0 0 6px"><i id="stBar"></i></div>
+    <p class="hint" id="stCount"></p>
+    <div class="tools">
+      <input type="search" id="q" placeholder="Tìm tên học sinh…">
+      <div class="seg" role="tablist">
+        <button data-f="all" class="on">Tất cả</button><button data-f="no">Chưa điền</button><button data-f="ok">Đã điền</button>
+      </div>
+    </div>
+    <ul class="list" id="stList"></ul>
+    <div class="msg" id="mStudents"></div>
+  </section>
+
+  <!-- 4. Điền lý lịch -->
+  <section class="card" id="vForm" hidden>
+    <div class="crumbs"><button class="back" data-go="students">← Danh sách</button></div>
+    <div class="who"><div class="avatar" id="av"></div><div><b id="fName"></b><span id="fInfo"></span></div></div>
+    <p class="stamp" id="stamp" hidden></p>
+    <form id="fProfile" autocomplete="off" novalidate>
+      <fieldset>
+        <legend>📍 Nơi sinh & chỗ ở</legend>
+        <div class="field">
+          <label for="noisinh">Nơi sinh <span class="req">*</span></label>
+          <input type="text" id="noisinh" list="dlNoiSinh" maxlength="200" placeholder="VD: Tỉnh An Giang">
+          <small>Ghi đúng theo giấy khai sinh.</small>
+        </div>
+        <div class="field">
+          <label for="cho">Chỗ ở hiện tại <span class="req">*</span></label>
+          <input type="text" id="cho" list="dlCho" maxlength="200" placeholder="Tổ / ấp / khu phố, xã (phường), tỉnh">
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>👨 Cha</legend>
+        <div class="row3">
+          <div class="field"><label for="cha">Họ và tên cha</label><input type="text" id="cha" maxlength="200" autocapitalize="words"></div>
+          <div class="field"><label for="ngheCha">Nghề nghiệp</label><input type="text" id="ngheCha" list="dlNghe" maxlength="200"></div>
+          <div class="field"><label for="sdtCha">Số điện thoại</label><input type="tel" id="sdtCha" inputmode="tel" maxlength="20"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>👩 Mẹ</legend>
+        <div class="row3">
+          <div class="field"><label for="me">Họ và tên mẹ</label><input type="text" id="me" maxlength="200" autocapitalize="words"></div>
+          <div class="field"><label for="ngheMe">Nghề nghiệp</label><input type="text" id="ngheMe" list="dlNghe" maxlength="200"></div>
+          <div class="field"><label for="sdtMe">Số điện thoại</label><input type="tel" id="sdtMe" inputmode="tel" maxlength="20"></div>
+        </div>
+        <small class="hint" style="display:block;margin-top:-6px">Không có cha/mẹ thì ghi tên <b>người giám hộ</b> vào một trong hai ô.</small>
+      </fieldset>
+      <fieldset>
+        <legend>✍️ Người điền</legend>
+        <div class="field"><input type="text" id="nguoiDien" maxlength="200" placeholder="VD: Cô Lan (GVCN) hoặc phụ huynh em …"></div>
+      </fieldset>
+      <div class="btns">
+        <button class="btn" id="btnNext" type="submit">Lưu & em tiếp theo →</button>
+        <button class="btn ghost" id="btnSave" type="button">Lưu</button>
+      </div>
+      <div class="msg" id="mForm"></div>
+    </form>
+  </section>
+
+  <footer>Thông tin chỉ dùng cho hồ sơ của nhà trường.</footer>
+</main>
+
+<datalist id="dlNghe">
+  <option value="Làm ruộng"><option value="Nội trợ"><option value="Công nhân"><option value="Buôn bán">
+  <option value="Làm thuê"><option value="Kinh doanh"><option value="Nuôi trồng thủy sản"><option value="Thợ hồ">
+  <option value="Tài xế"><option value="Giáo viên"><option value="Cán bộ, công chức"><option value="Lao động tự do">
+  <option value="Đi làm xa"><option value="Đã mất">
+</datalist>
+<datalist id="dlNoiSinh"></datalist>
+<datalist id="dlCho"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  // Link Apps Script (.../exec) sau khi triển khai Code.gs
+  var API_URL = "https://script.google.com/macros/s/DAN_MA_TRIEN_KHAI_VAO_DAY/exec";
+  var FIELDS = ["noisinh", "cho", "cha", "ngheCha", "sdtCha", "me", "ngheMe", "sdtMe", "nguoiDien"];
+  var KEY = "lylich-pass";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var pass = "", classes = [], curClass = "", students = [], filter = "all", cur = null;
+
+  function store(fn) { try { return fn(); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function plain(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
+
+  function api(fn, args) {
+    if (API_URL.indexOf("DAN_MA_TRIEN_KHAI") >= 0)
+      return Promise.reject(new Error("Trang chưa được nối với Google Sheet (chưa dán link Apps Script vào API_URL)."));
+    return fetch(API_URL, { method: "POST", body: JSON.stringify({ fn: fn, args: args }) })
+      .catch(function () { throw new Error("Không kết nối được máy chủ Google. Kiểm tra mạng rồi thử lại."); })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.error || "Có lỗi xảy ra."); return d.result; });
+  }
+
+  function msg(id, text) { var m = $(id); m.textContent = text || ""; m.className = "msg" + (text ? " err" : ""); }
+  var tTimer;
+  function toast(text) { var t = $("toast"); t.textContent = text; t.classList.add("show"); clearTimeout(tTimer); tTimer = setTimeout(function () { t.classList.remove("show"); }, 2400); }
+  function busy(btn, on, label) {
+    if (on) { btn.dataset.label = btn.innerHTML; btn.innerHTML = '<span class="spin"></span>' + (label || "Đang xử lý…"); btn.disabled = true; }
+    else { btn.innerHTML = btn.dataset.label || btn.innerHTML; btn.disabled = false; }
+  }
+  function show(view) {
+    ["vLogin", "vClasses", "vStudents", "vForm"].forEach(function (v) { $(v).hidden = v !== view; });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ---- 1. Mã truy cập ----
+  $("fLogin").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var p = $("pass").value.trim(); if (!p) return;
+    login(p, $("remember").checked);
+  });
+  function login(p, remember) {
+    var btn = $("btnLogin"); busy(btn, true, "Đang kiểm tra…"); msg("mLogin");
+    api("getInit", [p]).then(function (res) {
+      pass = p;
+      store(function () { remember ? localStorage.setItem(KEY, p) : localStorage.removeItem(KEY); });
+      classes = res.classes || [];
+      renderClasses(); show("vClasses");
+    }).catch(function (err) {
+      store(function () { localStorage.removeItem(KEY); });
+      show("vLogin"); msg("mLogin", err.message);
+    }).finally(function () { busy(btn, false); });
+  }
+
+  // ---- 2. Lớp ----
+  function renderClasses() {
+    $("classList").innerHTML = classes.map(function (c) {
+      var pct = c.total ? Math.round(c.filled * 100 / c.total) : 0;
+      return '<button class="cls" data-lop="' + esc(c.lop) + '"><b>' + esc(c.lop) + '</b><span>Đã điền ' + c.filled + "/" + c.total +
+        '</span><div class="bar"><i style="width:' + pct + '%"></i></div></button>';
+    }).join("") || '<p class="empty">Chưa có danh sách lớp.</p>';
+    Array.prototype.forEach.call($("classList").querySelectorAll(".cls"), function (b) {
+      b.onclick = function () { openClass(b.dataset.lop); };
+    });
+  }
+  function refreshClasses() { return api("getInit", [pass]).then(function (r) { classes = r.classes || []; renderClasses(); }).catch(function () {}); }
+
+  // ---- 3. Học sinh ----
+  function openClass(lop) {
+    curClass = lop; $("stTitle").textContent = "Lớp " + lop; $("stList").innerHTML = '<li class="empty"><span class="spin"></span>Đang tải danh sách…</li>';
+    $("q").value = ""; setFilter("all"); msg("mStudents"); show("vStudents");
+    api("getClass", [lop, pass]).then(function (list) { students = list; renderStudents(); })
+      .catch(function (err) { $("stList").innerHTML = ""; msg("mStudents", err.message); });
+  }
+  function setFilter(f) {
+    filter = f;
+    Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function (b) { b.classList.toggle("on", b.dataset.f === f); });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function (b) { b.onclick = function () { setFilter(b.dataset.f); renderStudents(); }; });
+  $("q").addEventListener("input", renderStudents);
+
+  function renderStudents() {
+    var done = students.filter(function (s) { return s.filled; }).length;
+    $("stBar").style.width = (students.length ? done * 100 / students.length : 0) + "%";
+    $("stCount").textContent = "Đã điền " + done + "/" + students.length + " em" + (done === students.length && done ? " — hoàn thành! 🎉" : "");
+    var q = plain($("q").value.trim());
+    var rows = students.filter(function (s) {
+      if (filter === "ok" && !s.filled) return false;
+      if (filter === "no" && s.filled) return false;
+      return !q || plain(s.name).indexOf(q) >= 0;
+    });
+    $("stList").innerHTML = rows.map(function (s) {
+      var i = students.indexOf(s);
+      return '<li><button data-i="' + i + '"><span class="stt">' + esc(s.stt) + '</span><span class="nm">' + esc(s.name) +
+        '<span class="ns">' + esc([s.ns, s.gt].filter(Boolean).join(" · ")) + "</span></span>" +
+        (s.filled ? '<span class="badge ok">✓ Đã điền</span>' : '<span class="badge no">Chưa điền</span>') + "</button></li>";
+    }).join("") || '<li class="empty">Không có học sinh phù hợp.</li>';
+    Array.prototype.forEach.call($("stList").querySelectorAll("button"), function (b) {
+      b.onclick = function () { openForm(students[+b.dataset.i]); };
+    });
+  }
+
+  // ---- 4. Form ----
+  function initials(name) { var p = String(name).trim().split(/\s+/); return (p[p.length - 1] || "?").charAt(0).toUpperCase(); }
+  function openForm(s) {
+    cur = s;
+    $("av").textContent = initials(s.name);
+    $("fName").textContent = s.name;
+    $("fInfo").textContent = ["Lớp " + curClass, s.ns && "Sinh " + s.ns, s.gt].filter(Boolean).join(" · ");
+    FIELDS.forEach(function (f) { $(f).value = ""; $(f).classList.remove("bad"); });
+    $("stamp").hidden = true; msg("mForm");
+    show("vForm");
+    var keep = $("nguoiDien").dataset.last; if (keep) $("nguoiDien").value = keep;
+    if (!s.filled) { $("noisinh").focus(); return; }
+    setFormBusy(true);
+    api("getProfile", [s.key, pass]).then(function (p) {
+      if (cur !== s || !p) return;
+      FIELDS.forEach(function (f) { $(f).value = p[f] || ""; });
+      if (p.capNhat) { $("stamp").textContent = "Cập nhật lần cuối: " + p.capNhat + (p.nguoiDien ? " — " + p.nguoiDien : ""); $("stamp").hidden = false; }
+    }).catch(function (err) { msg("mForm", err.message); }).finally(function () { setFormBusy(false); });
+  }
+  function setFormBusy(on) { FIELDS.forEach(function (f) { $(f).disabled = on; }); $("btnNext").disabled = on; $("btnSave").disabled = on; }
+
+  // Viết hoa chữ cái đầu mỗi từ cho họ tên
+  function titleCase(s) {
+    return s.trim().replace(/\s+/g, " ").toLocaleLowerCase("vi").replace(/(^|\s)(\S)/g, function (m, a, b) { return a + b.toLocaleUpperCase("vi"); });
+  }
+  ["cha", "me"].forEach(function (f) { $(f).addEventListener("blur", function () { if ($(f).value.trim()) $(f).value = titleCase($(f).value); }); });
+  ["noisinh", "cho", "ngheCha", "ngheMe"].forEach(function (f) {
+    $(f).addEventListener("blur", function () { var v = $(f).value.trim().replace(/\s+/g, " "); $(f).value = v ? v.charAt(0).toLocaleUpperCase("vi") + v.slice(1) : ""; });
+  });
+
+  function validate() {
+    var bad = [];
+    ["noisinh", "cho"].forEach(function (f) { if (!$(f).value.trim()) bad.push(f); });
+    if (!$("cha").value.trim() && !$("me").value.trim()) bad.push("cha", "me");
+    ["sdtCha", "sdtMe"].forEach(function (f) {
+      var v = $(f).value.replace(/[\s.\-]/g, "");
+      if (v && !/^(\+?84|0)\d{8,10}$/.test(v)) bad.push(f);
+    });
+    FIELDS.forEach(function (f) { $(f).classList.toggle("bad", bad.indexOf(f) >= 0); });
+    if (bad.length) {
+      var t = bad.indexOf("noisinh") >= 0 || bad.indexOf("cho") >= 0 ? "Cần điền Nơi sinh và Chỗ ở hiện tại."
+        : bad.indexOf("cha") >= 0 ? "Cần điền họ tên cha hoặc mẹ (hoặc người giám hộ)." : "Số điện thoại chưa đúng (VD: 0912345678).";
+      msg("mForm", t); $(bad[0]).focus(); return false;
+    }
+    return true;
+  }
+
+  function save(goNext) {
+    if (!cur || !validate()) return;
+    var data = { key: cur.key };
+    FIELDS.forEach(function (f) { data[f] = $(f).value.trim(); });
+    var btn = goNext ? $("btnNext") : $("btnSave");
+    busy(btn, true, "Đang lưu…"); msg("mForm");
+    $("nguoiDien").dataset.last = data.nguoiDien;
+    rememberSuggest(data);
+    api("saveProfile", [data, pass]).then(function () {
+      cur.filled = true;
+      toast("✓ Đã lưu lý lịch " + cur.name);
+      if (goNext) {
+        var i = students.indexOf(cur), next = null;
+        for (var k = 1; k <= students.length; k++) { var s = students[(i + k) % students.length]; if (!s.filled) { next = s; break; } }
+        if (next) openForm(next); else { renderStudents(); show("vStudents"); toast("🎉 Cả lớp đã có lý lịch!"); }
+      } else { $("stamp").textContent = "Vừa lưu xong."; $("stamp").hidden = false; }
+      refreshClasses();
+    }).catch(function (err) { msg("mForm", err.message); }).finally(function () { busy(btn, false); });
+  }
+  $("fProfile").addEventListener("submit", function (e) { e.preventDefault(); save(true); });
+  $("btnSave").addEventListener("click", function () { save(false); });
+
+  // Gợi ý nơi sinh / chỗ ở đã gõ trước đó trên máy này
+  function rememberSuggest(d) {
+    [["noisinh", "dlNoiSinh"], ["cho", "dlCho"]].forEach(function (p) {
+      var k = "lylich-goiy-" + p[0], list = store(function () { return JSON.parse(localStorage.getItem(k) || "[]"); }) || [];
+      if (d[p[0]] && list.indexOf(d[p[0]]) < 0) { list.unshift(d[p[0]]); list = list.slice(0, 15); store(function () { localStorage.setItem(k, JSON.stringify(list)); }); }
+      $(p[1]).innerHTML = list.map(function (v) { return '<option value="' + esc(v) + '">'; }).join("");
+    });
+  }
+  rememberSuggest({});
+
+  // Nút quay lại
+  Array.prototype.forEach.call(document.querySelectorAll(".back"), function (b) {
+    b.onclick = function () {
+      if (b.dataset.go === "classes") { refreshClasses(); show("vClasses"); }
+      else { renderStudents(); show("vStudents"); }
+    };
+  });
+
+  // Tự vào nếu đã ghi nhớ mã
+  var saved = store(function () { return localStorage.getItem(KEY); });
+  if (saved) { $("pass").value = saved; login(saved, true); }
+})();
+</script>
+</body>
+</html>
