@@ -722,6 +722,76 @@
     return [lines.filter(Boolean).join("; ")];
   }
 
+  // ---------- Đọc file .xls đời cũ (vnEdu) bằng SheetJS → workbook ExcelJS (chỉ giá trị + ô gộp) ----------
+  function workbookFromXls(XLSX, ExcelJS, buf) {
+    const src = XLSX.read(new Uint8Array(buf), { type: "array" });
+    const wb = new ExcelJS.Workbook();
+    for (const name of src.SheetNames) {
+      const s = src.Sheets[name], ws = wb.addWorksheet(name.slice(0, 31));
+      if (!s["!ref"]) continue;
+      const rg = XLSX.utils.decode_range(s["!ref"]);
+      for (let r = rg.s.r; r <= rg.e.r; r++)
+        for (let c = rg.s.c; c <= rg.e.c; c++) {
+          const cell = s[XLSX.utils.encode_cell({ r, c })];
+          if (!cell || cell.v == null || cell.v === "") continue;
+          // ô ngày dạng số → lấy chữ hiển thị (dd/mm/yyyy)
+          const isDate = cell.t === "d" || (cell.t === "n" && cell.z && /[dmy]/i.test(cell.z) && !/[#0]/.test(cell.z));
+          ws.getCell(r + 1, c + 1).value = isDate ? (cell.w || String(cell.v)) : cell.v;
+        }
+      for (const m of s["!merges"] || []) {
+        try { ws.mergeCells(m.s.r + 1, m.s.c + 1, m.e.r + 1, m.e.c + 1); } catch (e) { /* bỏ qua ô gộp chồng nhau */ }
+      }
+    }
+    return wb;
+  }
+
+  // ---------- Đối chiếu: em có trong lý lịch nhưng không có trong danh sách lớp ----------
+  function profileExtras(idx, classes) {
+    const used = new Set();
+    for (const cl of classes) for (const hs of cl.sorted) {
+      const p = findProfile(idx, hs, cl.name);
+      if (p) used.add(p._lop + "|" + nameKeyStr(p.name));
+    }
+    const chosen = new Set(classes.map(c => lopKey(c.name)));
+    const out = [];
+    for (const [lop, list] of idx.byLop) {
+      if (!chosen.has(lop)) continue;
+      const seenHere = new Set();
+      for (const x of list) {
+        const k = lop + "|" + nameKeyStr(x.name);
+        if (used.has(k) || seenHere.has(k)) continue;
+        seenHere.add(k);
+        out.push({ lop: lop.toUpperCase(), name: x.name, kind: "Chỉ có trong lý lịch", detail: `Ngày sinh ${x.ns || "(trống)"}` });
+      }
+    }
+    return out;
+  }
+
+  const ISSUE_ORDER = ["Khác lớp", "Tên viết khác", "Ngày sinh khác", "Giới tính khác", "Dân tộc khác", "Chưa có lý lịch", "Chỉ có trong lý lịch"];
+  function makeIssuesWorkbook(wb, issues, title) {
+    const all = issues.slice().sort((a, b) => ISSUE_ORDER.indexOf(a.kind) - ISSUE_ORDER.indexOf(b.kind) ||
+      String(a.lop).localeCompare(String(b.lop)) || compareNames(a.name, b.name));
+    const s = wb.addWorksheet("Đối chiếu", { views: [{ state: "frozen", ySplit: 3 }],
+      pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+    s.mergeCells("A1:E1");
+    s.getCell("A1").value = title || "ĐỐI CHIẾU DANH SÁCH LỚP VỚI LÝ LỊCH HỌC SINH";
+    s.getCell("A1").font = { name: "Times New Roman", bold: true, size: 14 };
+    const counts = {};
+    all.forEach(x => { counts[x.kind] = (counts[x.kind] || 0) + 1; });
+    s.getCell("A2").value = Object.keys(counts).length ? ISSUE_ORDER.filter(k => counts[k]).map(k => `${k}: ${counts[k]}`).join("   •   ") : "Không có điểm nào khác nhau.";
+    s.getCell("A2").font = { name: "Times New Roman", italic: true };
+    s.getRow(3).values = ["STT", "Loại", "Lớp", "Họ và tên", "Chi tiết"];
+    const thin = { style: "thin", color: { argb: "FF999999" } }, border = { top: thin, left: thin, bottom: thin, right: thin };
+    s.getRow(3).eachCell(c => { c.font = { name: "Times New Roman", bold: true }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2EFE9" } }; c.border = border; });
+    all.forEach((x, i) => {
+      const row = s.addRow([i + 1, x.kind, x.lop, x.name, x.detail]);
+      row.eachCell(c => { c.font = { name: "Times New Roman" }; c.border = border; c.alignment = { vertical: "top", wrapText: true }; });
+    });
+    [6, 20, 7, 28, 62].forEach((w, i) => { s.getColumn(i + 1).width = w; });
+    s.pageSetup.printTitlesRow = "3:3";
+    return { wb, counts, total: all.length };
+  }
+
   // ---------- File mẫu lý lịch để giáo viên chủ nhiệm điền ----------
   const PROFILE_HEADERS = [
     ["STT", 6], ["Họ và tên", 26], ["Ngày sinh", 12], ["Giới tính", 9], ["Dân tộc", 9],
@@ -769,7 +839,7 @@
     plain, compareNames, readClasses, sortWorkbook, buildRegister, analyseTemplate, fmtDate,
     splitColumnExcel, mergeColumnExcel, splitName, joinName, locateNameHeader, classifyHeader, finishClass, isNum,
     assignColumns, joinHeaderTexts, buildProfileIndex, findProfile, mergeProfile, makeProfileTemplate, PROFILE_FIELDS,
-    markCrossDuplicates,
+    markCrossDuplicates, workbookFromXls, profileExtras, makeIssuesWorkbook,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.SDB = API;

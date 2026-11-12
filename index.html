@@ -141,12 +141,15 @@
     </label>
     <div class="sub">
       <div class="subhead"><b>Lý lịch học sinh</b> <span class="muted">(không bắt buộc)</span></div>
-      <p class="hint">Để điền <b>nơi sinh, chỗ ở hiện tại, họ tên và nghề nghiệp cha mẹ</b>. Chọn một hoặc nhiều file Excel/Word có các cột này (ví dụ xuất từ phần mềm quản lý, hoặc file mẫu bên dưới đã được GVCN điền). Phần mềm tự ghép từng em theo <b>họ tên + ngày sinh</b> (trùng thì xét thêm lớp).</p>
+      <p class="hint">Để điền <b>nơi sinh, chỗ ở hiện tại, họ tên và nghề nghiệp cha mẹ</b>. Chọn <b>các file tải từ vnEdu</b> (dùng thẳng file <b>.xls</b>, chọn cả 7 lớp cùng lúc), hoặc file Excel/Word khác có các cột này. Phần mềm tự ghép từng em theo <b>họ tên + ngày sinh</b> (trùng thì xét thêm lớp).</p>
       <label class="drop" id="dropLl">
-        <input type="file" id="fileLl" accept=".xlsx,.docx" multiple>
+        <input type="file" id="fileLl" accept=".xls,.xlsx,.docx" multiple>
         <div class="ico">🗂️</div>
-        <div><b>Chọn file lý lịch (chọn được nhiều file)</b><span id="nameLl">Chưa chọn file</span></div>
+        <div><b>Chọn file lý lịch / file vnEdu (chọn được nhiều file)</b><span id="nameLl">Chưa chọn file</span></div>
       </label>
+      <div class="opts">
+        <label><input type="checkbox" id="optDob" checked> Lấy <b>ngày sinh theo file lý lịch (vnEdu)</b> khi khác danh sách lớp</label>
+      </div>
       <button class="btn ghost" id="btnMauLl" disabled>⬇ Tải file mẫu lý lịch để GVCN điền</button>
       <p class="rule">Hoặc cho GVCN / phụ huynh điền trực tuyến tại <a href="ly-lich/" target="_blank" rel="noopener">form Lý lịch học sinh</a>, rồi tải trang <b>LyLich</b> trong Google Sheet về và chọn ở ô trên.</p>
       <div class="msg" id="msg3"></div>
@@ -161,6 +164,11 @@
     </div>
     <button class="btn" id="btnSdb" disabled>⬇ Tạo sổ đăng bộ</button>
     <div class="msg" id="msg2"></div>
+    <div id="issueBox" class="sub" hidden>
+      <div class="subhead"><b>Đối chiếu danh sách lớp ↔ lý lịch</b></div>
+      <p id="issueSum" style="margin:6px 0 0"></p>
+      <button class="btn ghost" id="btnIssues">⬇ Tải file đối chiếu (để kiểm tra lại)</button>
+    </div>
   </section>
 
   <footer>File chỉ được xử lý ngay trên máy của thầy cô, không gửi đi đâu. Dùng được cả khi không có mạng.</footer>
@@ -170,6 +178,7 @@
 <script src="jszip.min.js"></script>
 <script src="core.js"></script>
 <script src="word.js"></script>
+<script src="xlsx.full.min.js"></script>
 <script>
 (function () {
   const $ = id => document.getElementById(id);
@@ -294,7 +303,8 @@
     const buf = await file.arrayBuffer();
     if (/\.docx$/i.test(file.name)) return SDBWord.readClassesDocx(await SDBWord.loadDocx(buf));
     if (/\.xlsx$/i.test(file.name)) return SDB.readClasses(await loadWb(buf));
-    throw new Error(`“${file.name}”: chỉ nhận .xlsx hoặc .docx`);
+    if (/\.xls$/i.test(file.name)) return SDB.readClasses(SDB.workbookFromXls(XLSX, ExcelJS, buf));
+    throw new Error(`“${file.name}”: chỉ nhận .xls, .xlsx hoặc .docx`);
   }
   function showLlMatch() {
     $("llMiss").innerHTML = "";
@@ -370,12 +380,32 @@
       const wb = await loadWb(tplBuf);
       const r = SDB.buildRegister(wb, sel, {
         namHoc: $("namHoc").value.trim(), khoaHoc: $("khoaHoc").value.trim(), upper: $("optUpper").checked,
-        profiles: llIndex,
+        profiles: llIndex, dobFromProfile: !!llIndex && $("optDob").checked,
       });
-      await download(wb, baseName(tplName) + " " + ($("namHoc").value.trim() || "") + " (đã nhập).xlsx");
+      await download(wb, baseName(tplName) + " " + ($("namHoc").value.trim() || "") + (llIndex ? " (đủ lý lịch)" : " (đã nhập)") + ".xlsx");
       const per = r.report.map(x => `${x.name} (${x.count} em${llIndex ? ", có lý lịch " + x.matched : ""})`).join(", ");
       setMsg("msg2", "Đã tạo: " + per + ". File đã được tải về." + (llIndex ? "" : " Chưa chọn file lý lịch nên cột nơi sinh, chỗ ở, cha mẹ để trống (trừ khi danh sách lớp đã có sẵn)."), "ok");
+      // Đối chiếu danh sách lớp ↔ lý lịch
+      lastIssues = null; $("issueBox").hidden = true;
+      if (llIndex) {
+        const all = r.issues.concat(SDB.profileExtras(llIndex, sel));
+        lastIssues = all;
+        const counts = {}; all.forEach(x => { counts[x.kind] = (counts[x.kind] || 0) + 1; });
+        $("issueSum").innerHTML = all.length
+          ? Object.keys(counts).map(k => `<span class="warn">${esc(k)}: ${counts[k]}</span>`).join(" ")
+          : '<span class="okt">✓ Danh sách lớp và lý lịch khớp hoàn toàn</span>';
+        $("btnIssues").hidden = !all.length;
+        $("issueBox").hidden = false;
+      }
     } catch (e) { console.error(e); setMsg("msg2", "Lỗi: " + e.message, "err"); }
+  };
+
+  let lastIssues = null;
+  $("btnIssues").onclick = async () => {
+    if (!lastIssues) return;
+    const rep = SDB.makeIssuesWorkbook(new ExcelJS.Workbook(), lastIssues,
+      "ĐỐI CHIẾU DANH SÁCH LỚP VỚI LÝ LỊCH (vnEdu) — NĂM HỌC " + ($("namHoc").value.trim() || ""));
+    await download(rep.wb, "Đối chiếu lý lịch - " + baseName(dsName) + ".xlsx");
   };
 })();
 </script>
