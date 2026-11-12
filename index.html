@@ -68,6 +68,13 @@
   .msg.ok { color: var(--ok); }
   footer { margin-top: 26px; color: var(--muted); font-size: 13.5px; text-align: center; }
   .rule { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 2px; font-size: 15px; }
+  .seg-label { color: var(--muted); margin-right: 2px; }
+  .seg label { display: flex; gap: 6px; align-items: center; cursor: pointer; border: 1px solid var(--line);
+               border-radius: 999px; padding: 5px 12px; background: var(--bg); }
+  .seg label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .seg input { accent-color: var(--accent); margin: 0; }
+  .tag { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
   header.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .tools { display: flex; align-items: center; gap: 10px; }
   .net { font-size: 13px; border-radius: 999px; padding: 3px 10px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
@@ -90,19 +97,28 @@
 
   <section class="card">
     <h2><span class="step">1</span>Danh sách lớp</h2>
-    <p class="hint">Chọn file Excel danh sách học sinh. Mỗi lớp nằm trên một sheet và có cột “Họ và tên”.</p>
+    <p class="hint">Chọn file <b>Excel (.xlsx)</b> hoặc <b>Word (.docx)</b>. Excel: mỗi lớp một sheet. Word: mỗi lớp một bảng. Cột họ tên có thể là một cột “Họ và tên” hoặc hai cột “Họ và chữ lót” | “Tên”.</p>
     <label class="drop" id="dropDs">
-      <input type="file" id="fileDs" accept=".xlsx">
+      <input type="file" id="fileDs" accept=".xlsx,.docx">
       <div class="ico">📋</div>
       <div><b>Bấm để chọn hoặc kéo thả file vào đây</b><span id="nameDs">Chưa chọn file</span></div>
     </label>
     <div id="classBox"></div>
     <div id="sortBox" hidden>
       <div class="opts">
-        <label><input type="checkbox" id="optDrop"> Bỏ các dòng trống tên</label>
-        <label><input type="checkbox" id="optFooter"> Sửa dòng “Danh sách có … học sinh” theo số thực tế</label>
+        <label><input type="checkbox" id="optSort" checked> <b>Xếp tên theo ABC</b> (đánh lại số thứ tự)</label>
       </div>
-      <button class="btn" id="btnSort">⬇ Tải danh sách đã xếp ABC</button>
+      <div class="seg" role="radiogroup" aria-label="Cột họ tên">
+        <span class="seg-label">Cột họ tên:</span>
+        <label><input type="radio" name="colMode" value="keep" checked> Giữ nguyên</label>
+        <label><input type="radio" name="colMode" value="split"> Tách: Họ và chữ lót | Tên</label>
+        <label><input type="radio" name="colMode" value="merge"> Gộp thành: Họ và tên</label>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="optDrop"> Bỏ các dòng trống tên</label>
+        <label id="lblFooter"><input type="checkbox" id="optFooter"> Sửa dòng “Danh sách có … học sinh” theo số thực tế</label>
+      </div>
+      <button class="btn" id="btnSort">⬇ Tải file kết quả</button>
       <div class="rule">Cách xếp: theo <b>tên</b>, trùng tên thì xét <b>họ</b> rồi <b>đệm</b>; đúng thứ tự chữ cái tiếng Việt (a ă â b c d đ …), cùng chữ thì xét dấu thanh.</div>
     </div>
     <div class="msg" id="msg1"></div>
@@ -131,11 +147,13 @@
 </div>
 
 <script src="exceljs.min.js"></script>
+<script src="jszip.min.js"></script>
 <script src="core.js"></script>
+<script src="word.js"></script>
 <script>
 (function () {
   const $ = id => document.getElementById(id);
-  let dsBuf = null, dsName = "", tplBuf = null, tplName = "", classes = [];
+  let dsBuf = null, dsName = "", dsKind = "excel", tplBuf = null, tplName = "", classes = [];
 
   // ---- Online / offline & cài ứng dụng ----
   const isWeb = location.protocol === "http:" || location.protocol === "https:";
@@ -164,15 +182,20 @@
 
   async function loadWb(buf) { const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf.slice(0)); return wb; }
 
-  async function download(wb, filename) {
-    const out = await wb.xlsx.writeBuffer();
-    const url = URL.createObjectURL(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const MIME = {
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  };
+  async function download(wb, filename) { saveBytes(await wb.xlsx.writeBuffer(), filename, MIME.xlsx); }
+  function saveBytes(out, filename, type) {
+    const url = URL.createObjectURL(new Blob([out], { type }));
     const a = document.createElement("a"); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
-  function baseName(n) { return n.replace(/\.xlsx$/i, ""); }
+  function baseName(n) { return n.replace(/\.(xlsx|docx)$/i, ""); }
+  const colMode = () => document.querySelector('input[name="colMode"]:checked').value;
 
   function wireDrop(labelId, inputId, onFile) {
     const lab = $(labelId), inp = $(inputId);
@@ -186,19 +209,24 @@
     return classes.filter((c, i) => { const cb = $("cl" + i); return cb && cb.checked; });
   }
 
-  function refreshBtn() { $("btnSdb").disabled = !(tplBuf && selected().length); $("btnSort").disabled = !selected().length; }
+  function refreshBtn() {
+    $("btnSdb").disabled = !(tplBuf && selected().length);
+    $("btnSort").disabled = !selected().length || (!$("optSort").checked && colMode() === "keep");
+  }
+  $("optSort").onchange = refreshBtn;
+  document.querySelectorAll('input[name="colMode"]').forEach(r => r.onchange = refreshBtn);
 
   function renderClasses() {
     if (!classes.length) {
       $("classBox").innerHTML = ""; $("sortBox").hidden = true;
-      setMsg("msg1", "Không tìm thấy sheet nào có cột “Họ và tên”.", "err"); return;
+      setMsg("msg1", dsKind === "word" ? "Không tìm thấy bảng nào có cột “Họ và tên” trong file Word." : "Không tìm thấy sheet nào có cột “Họ và tên”.", "err"); return;
     }
     const total = classes.reduce((s, c) => s + c.sorted.length, 0);
     let h = `<table><thead><tr><th style="width:28px"><input type="checkbox" id="clAll" checked title="Chọn tất cả"></th>
-      <th>Lớp</th><th>Số HS</th><th>Cần xem lại</th><th class="hide-sm"></th></tr></thead><tbody>`;
+      <th>${dsKind === "word" ? "Bảng / lớp" : "Lớp"}</th><th>Số HS</th><th>Cần xem lại</th><th class="hide-sm"></th></tr></thead><tbody>`;
     classes.forEach((c, i) => {
       const w = c.warnings.length ? c.warnings.map(x => `<span class="warn">${esc(x)}</span>`).join("<br>") : `<span class="okt">✓ Ổn</span>`;
-      h += `<tr><td><input type="checkbox" id="cl${i}" checked></td><td><b>${esc(c.name)}</b></td>
+      h += `<tr><td><input type="checkbox" id="cl${i}" checked></td><td><b>${esc(c.name)}</b><br><span class="tag">${c.split ? "2 cột họ | tên" : "1 cột họ tên"}</span></td>
         <td class="num">${c.sorted.length}</td><td>${w}</td>
         <td class="hide-sm"><button class="link" data-i="${i}">Xem thứ tự</button></td></tr>
         <tr id="pv${i}" hidden><td></td><td colspan="4"><ol class="names">${c.sorted.map(x => `<li>${esc(x.name)}</li>`).join("")}</ol></td></tr>`;
@@ -211,7 +239,8 @@
     });
     $("clAll").onchange = e => { classes.forEach((c, i) => $("cl" + i).checked = e.target.checked); refreshBtn(); };
     classes.forEach((c, i) => $("cl" + i).onchange = refreshBtn);
-    setMsg("msg1", `Đọc được ${classes.length} lớp, tổng ${total} học sinh.`, "ok");
+    $("lblFooter").hidden = dsKind === "word";
+    setMsg("msg1", `${dsKind === "word" ? "File Word" : "File Excel"}: đọc được ${classes.length} ${dsKind === "word" ? "bảng" : "lớp"}, tổng ${total} học sinh.`, "ok");
     refreshBtn();
   }
 
@@ -219,7 +248,9 @@
     $("nameDs").textContent = f.name; setMsg("msg1", "Đang đọc file…");
     try {
       dsBuf = await f.arrayBuffer(); dsName = f.name;
-      classes = SDB.readClasses(await loadWb(dsBuf));
+      if (/\.docx$/i.test(f.name)) { dsKind = "word"; classes = SDBWord.readClassesDocx(await SDBWord.loadDocx(dsBuf.slice(0))); }
+      else if (/\.xlsx$/i.test(f.name)) { dsKind = "excel"; classes = SDB.readClasses(await loadWb(dsBuf)); }
+      else throw new Error("chỉ nhận file .xlsx hoặc .docx. File .xls/.doc đời cũ thì mở bằng Excel/Word rồi “Lưu thành” bản mới.");
       renderClasses();
     } catch (e) { console.error(e); classes = []; $("classBox").innerHTML = ""; $("sortBox").hidden = true;
       setMsg("msg1", "Không đọc được file: " + e.message, "err"); refreshBtn(); }
@@ -237,13 +268,27 @@
 
   $("btnSort").onclick = async () => {
     const sel = selected(); if (!sel.length) return;
-    setMsg("msg1", "Đang xếp…");
+    const doSort = $("optSort").checked, mode = colMode();
+    setMsg("msg1", "Đang xử lý…");
     try {
-      const wb = await loadWb(dsBuf);
-      const cls = SDB.readClasses(wb).filter(c => sel.some(s => s.sheet === c.sheet));
-      SDB.sortWorkbook(wb, cls, { dropBlank: $("optDrop").checked, fixFooter: $("optFooter").checked });
-      await download(wb, baseName(dsName) + " (xếp ABC).xlsx");
-      setMsg("msg1", `Đã xếp ${cls.length} lớp. File đã được tải về.`, "ok");
+      const pick = list => list.filter(c => sel.some(s => s.sheet === c.sheet));
+      const word = dsKind === "word";
+      const doc = word ? await SDBWord.loadDocx(dsBuf.slice(0)) : await loadWb(dsBuf);
+      const read = () => pick(word ? SDBWord.readClassesDocx(doc) : SDB.readClasses(doc));
+      let cls = read(), changed = 0;
+      if (mode === "split") cls.forEach(c => { if (word ? SDBWord.splitDocx(c) : SDB.splitColumnExcel(doc, c)) changed++; });
+      if (mode === "merge") cls.forEach(c => { if (word ? SDBWord.mergeDocx(c) : SDB.mergeColumnExcel(doc, c)) changed++; });
+      if (mode !== "keep") cls = read();
+      const opts = { dropBlank: $("optDrop").checked, fixFooter: $("optFooter").checked };
+      if (doSort) word ? SDBWord.sortDocx(cls, opts) : SDB.sortWorkbook(doc, cls, opts);
+      const tags = [doSort && "xếp ABC", mode === "split" && "tách cột", mode === "merge" && "gộp cột"].filter(Boolean).join(", ");
+      const fname = `${baseName(dsName)} (${tags}).${word ? "docx" : "xlsx"}`;
+      if (word) saveBytes(await SDBWord.saveDocx(doc), fname, MIME.docx); else await download(doc, fname);
+      const unit = word ? "bảng" : "lớp";
+      let note = "";
+      if (mode === "split" && changed < cls.length) note = ` (${cls.length - changed} ${unit} đã tách sẵn nên giữ nguyên)`;
+      if (mode === "merge" && changed < cls.length) note = ` (${cls.length - changed} ${unit} vốn chỉ có 1 cột nên giữ nguyên)`;
+      setMsg("msg1", `Xong ${cls.length} ${unit}${note}. Đã tải về: ${fname}`, "ok");
     } catch (e) { console.error(e); setMsg("msg1", "Lỗi: " + e.message, "err"); }
   };
 

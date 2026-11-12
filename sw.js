@@ -1,7 +1,7 @@
 // Lưu sẵn các file của trang để dùng được khi mất mạng.
 // Khi sửa trang, tăng số phiên bản để máy tải bản mới.
-const CACHE = "so-dang-bo-v1";
-const FILES = ["./", "index.html", "core.js", "exceljs.min.js", "manifest.webmanifest", "icon.svg"];
+const CACHE = "so-dang-bo-v2";
+const FILES = ["./", "index.html", "core.js", "word.js", "exceljs.min.js", "jszip.min.js", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

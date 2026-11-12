@@ -88,32 +88,92 @@
   function lastCol(ws) { return Math.max(ws.columnCount || 0, ws.actualColumnCount || 0, 1); }
 
   // ---------- Đọc danh sách lớp ----------
-  function findHeader(ws) {
-    const maxR = Math.min(ws.rowCount, 30), maxC = Math.min(lastCol(ws), 30);
-    for (let r = 1; r <= maxR; r++)
-      for (let c = 1; c <= maxC; c++)
-        if (/^ho (va )?ten( |$)|^ho va$/.test(plain(txt(val(ws, r, c))))) return { row: r, nameCol: c };
+  // ---- Nhận diện tiêu đề cột (dùng chung cho Excel và Word) ----
+  // "Họ và tên", "Họ tên", "Họ và tên học sinh", "Họ và" (thiếu chữ tên)
+  function isFullHeader(t) { return (/^ho (va )?ten( |$)/.test(t) && !/(dem|lot)$/.test(t)) || t === "ho va"; }
+  // "Họ", "Họ và", "Họ đệm", "Họ và tên đệm", "Họ và chữ lót"
+  function isHoHeader(t) { return t === "ho" || t === "ho va" || (/^ho /.test(t) && /(dem|lot)$/.test(t)); }
+  function isTenHeader(t) { return t === "ten" || t === "ten hoc sinh"; }
+
+  // Phân loại tiêu đề các cột còn lại
+  function classifyHeader(h) {
+    if (!h) return null;
+    if (h.includes("stt") || h === "so tt" || h === "tt") return "stt";
+    if (h.includes("gioi tinh") || h === "nam nu" || h === "nu") return "gt";
+    if (h.includes("dan toc")) return "dt";
+    if (h.includes("noi sinh")) return "noisinh";
+    if (h.includes("sinh")) return "ns";
+    if (h.includes("cho o") || h.includes("dia chi")) return "cho";
+    if (/\bcha\b|\bme\b/.test(h)) return "chame";
+    if (h.includes("ghi chu")) return "note";
     return null;
   }
 
-  function mapColumns(ws, hr) {
+  // Tìm cột họ tên trên một lưới ô: get(r, c) trả về chữ đã bỏ dấu.
+  // Kết quả: { row (dòng tiêu đề cuối), top (dòng tiêu đề đầu), nameCol, tenCol? }
+  function locateNameHeader(get, maxR, maxC) {
+    for (let r = 1; r <= maxR; r++)
+      for (let c = 1; c <= maxC; c++) {
+        const t = get(r, c);
+        if (!t || !t.startsWith("ho")) continue;
+        const next = get(r, c + 1);
+        if (isHoHeader(t) && isTenHeader(next)) return { row: r, top: r, nameCol: c, tenCol: c + 1 };
+        if (isFullHeader(t) || isHoHeader(t)) {
+          // "Họ và tên" gộp ngang, dòng dưới chia "Họ đệm" | "Tên"
+          const a = get(r + 1, c), b = get(r + 1, c + 1);
+          if (isHoHeader(a) && isTenHeader(b)) return { row: r + 1, top: r, nameCol: c, tenCol: c + 1 };
+          return { row: r, top: r, nameCol: c };
+        }
+      }
+    return null;
+  }
+
+  function findHeader(ws) {
+    const get = (r, c) => plain(txt(val(ws, r, c)));
+    return locateNameHeader(get, Math.min(ws.rowCount, 30), Math.min(lastCol(ws), 30));
+  }
+
+  function mapColumns(ws, h) {
     const cols = {};
     const maxC = lastCol(ws);
     for (let c = 1; c <= maxC; c++) {
-      const h = plain(txt(val(ws, hr, c)));
-      if (!h) continue;
-      if (h.includes("stt") || h === "so tt") cols.stt = cols.stt || c;
-      else if (/^ho (va )?ten( |$)|^ho va$/.test(h)) cols.name = c;
-      else if (h.includes("gioi tinh") || h === "nam nu") cols.gt = c;
-      else if (h.includes("dan toc")) cols.dt = c;
-      else if (h.includes("noi sinh")) cols.noisinh = c;
-      else if (h.includes("sinh")) cols.ns = cols.ns || c;
-      else if (h.includes("cho o") || h.includes("dia chi")) cols.cho = c;
-      else if (h.includes("cha") || h.includes("me")) cols.chame = c;
-      else if (h.includes("ghi chu")) cols.note = c;
+      if (c === h.nameCol || c === h.tenCol) continue;
+      // ô tiêu đề gộp dọc: lấy giá trị ô gốc
+      const k = classifyHeader(plain(txt(ws.getCell(h.row, c).value))) || classifyHeader(plain(txt(ws.getCell(h.top, c).value)));
+      if (k && !cols[k]) cols[k] = c;
     }
     if (!cols.stt) cols.stt = 1;
+    cols.name = h.nameCol;
+    if (h.tenCol) cols.ten = h.tenCol;
     return cols;
+  }
+
+  function splitName(full) {
+    const p = String(full || "").trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return ["", ""];
+    return [p.slice(0, -1).join(" "), p[p.length - 1]];
+  }
+  function joinName(ho, ten) { return (String(ho || "").trim() + " " + String(ten || "").trim()).replace(/\s+/g, " ").trim(); }
+
+  // Kiểm tra & đóng gói một lớp (dùng chung Excel / Word)
+  function finishClass(cl) {
+    const named = cl.rows.filter(x => x.name);
+    const w = [];
+    const blank = cl.rows.length - named.length;
+    if (blank) w.push(blank + " dòng trống tên");
+    if (cl.footer && cl.footer.count !== named.length)
+      w.push(`Ghi "${cl.footer.count} học sinh" nhưng có ${named.length} em`);
+    if (cl.cols.gt || cl.cols.ns || cl.cols.dt) {
+      const thieu = named.filter(x => (cl.cols.gt && !x.gt) || (cl.cols.ns && !x.ns) || (cl.cols.dt && !x.dt)).map(x => x.name);
+      if (thieu.length) w.push("Thiếu giới tính/ngày sinh/dân tộc: " + thieu.join(", "));
+    }
+    const seen = {}, dup = [];
+    named.forEach(x => { const k = plain(x.name) + "|" + x.ns; if (seen[k]) dup.push(x.name); seen[k] = 1; });
+    if (dup.length) w.push("Có thể bị trùng: " + dup.join(", "));
+    cl.warnings = w;
+    cl.split = !!cl.cols.ten;
+    cl.sorted = named.slice().sort((a, b) => compareNames(a.name, b.name));
+    return cl;
   }
 
   // Trả về các lớp: { name, sheet, header, cols, first, last, rows:[{r, name, ...}], footer, warnings }
@@ -122,15 +182,20 @@
     wb.eachSheet(ws => {
       const h = findHeader(ws);
       if (!h) return;
-      const cols = mapColumns(ws, h.row);
-      cols.name = h.nameCol;
+      const cols = mapColumns(ws, h);
+      const nameAt = r => cols.ten
+        ? joinName(txt(val(ws, r, cols.name)), txt(val(ws, r, cols.ten)))
+        : txt(val(ws, r, cols.name)).replace(/\s+/g, " ").trim();
       let r = h.row + 1;
-      // bỏ qua dòng tiêu đề gộp (trống)
-      for (let k = 0; k < 3 && !txt(val(ws, r, cols.name)).trim() && !isNum(val(ws, r, cols.stt)); k++) r++;
+      // bỏ qua dòng tiêu đề gộp (trống) và dòng đánh số cột (1) (2) (3)…
+      for (let k = 0; k < 3; k++) {
+        const nm = nameAt(r);
+        if ((!nm && !isNum(val(ws, r, cols.stt))) || /^\(?\d+\)?$/.test(nm)) r++; else break;
+      }
       const first = r, rows = [];
       for (; r <= ws.rowCount; r++) {
         const sttV = val(ws, r, cols.stt);
-        const name = txt(val(ws, r, cols.name)).replace(/\s+/g, " ").trim();
+        const name = nameAt(r);
         const sttT = txt(sttV).trim();
         if (sttT && !isNum(sttV)) break;          // "Danh sách có ..."
         if (!sttT && !name) break;                 // hết danh sách
@@ -150,21 +215,10 @@
         const m = plain(txt(val(ws, fr, 1))).match(/co\s+(\d+)\s+hoc sinh/);
         if (m) { footer = { row: fr, count: +m[1] }; break; }
       }
-      const named = rows.filter(x => x.name);
-      const warnings = [];
-      const blank = rows.length - named.length;
-      if (blank) warnings.push(blank + " dòng trống tên");
-      if (footer && footer.count !== named.length)
-        warnings.push(`Ghi "${footer.count} học sinh" nhưng có ${named.length} em`);
-      const thieu = named.filter(x => !x.gt || !x.ns || !x.dt).map(x => x.name);
-      if (thieu.length) warnings.push("Thiếu giới tính/ngày sinh/dân tộc: " + thieu.join(", "));
-      const seen = {}, dup = [];
-      named.forEach(x => { const k = plain(x.name) + "|" + x.ns; if (seen[k]) dup.push(x.name); seen[k] = 1; });
-      if (dup.length) warnings.push("Có thể bị trùng: " + dup.join(", "));
-      classes.push({
-        name: ws.name.trim(), sheet: ws.name, header: h.row, cols, first, last, rows, footer, warnings,
-        sorted: named.slice().sort((a, b) => compareNames(a.name, b.name)),
-      });
+      classes.push(finishClass({
+        kind: "excel", name: ws.name.trim(), sheet: ws.name, header: h.row, headerTop: h.top,
+        cols, first, last, rows, footer,
+      }));
     });
     return classes;
   }
@@ -211,6 +265,100 @@
     return v;
   }
 
+  // ---------- Tách / gộp cột họ tên (Excel) ----------
+  function colLetter(n) { let s = ""; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+
+  // delta = +1: chèn cột trống tại `at`; delta = -1: xoá cột `at`.
+  function shiftColumns(ws, at, delta) {
+    const maxC = lastCol(ws), maxR = ws.rowCount;
+    const merges = (ws.model.merges || []).map(parseMerge);
+    merges.forEach(m => ws.unMergeCells(m.r1, m.c1, m.r2, m.c2));
+    const widths = [];
+    for (let c = 1; c <= maxC + 1; c++) widths[c] = ws.getColumn(c).width;
+    const move = (from, to) => {
+      for (let r = 1; r <= maxR; r++) {
+        const s = ws.getCell(r, from), d = ws.getCell(r, to);
+        d.value = clone(s.value) == null ? null : reviveDate(clone(s.value));
+        d.style = clone(s.style) || {};
+      }
+      ws.getColumn(to).width = widths[from];
+    };
+    if (delta > 0) {
+      for (let c = maxC; c >= at; c--) move(c, c + 1);
+      for (let r = 1; r <= maxR; r++) ws.getCell(r, at).value = null;
+    } else {
+      for (let c = at; c < maxC; c++) move(c + 1, c);
+      for (let r = 1; r <= maxR; r++) { const d = ws.getCell(r, maxC); d.value = null; d.style = {}; }
+    }
+    const out = [];
+    for (const m of merges) {
+      if (delta > 0) {
+        if (m.c1 >= at) out.push({ ...m, c1: m.c1 + 1, c2: m.c2 + 1 });
+        else if (m.c2 >= at) out.push({ ...m, c2: m.c2 + 1 });
+        else {
+          out.push(m);
+          if (m.c1 === at - 1 && m.c2 === at - 1) out.push({ ...m, c1: at, c2: at }); // ô tiêu đề gộp dọc
+        }
+      } else {
+        if (m.c1 === at && m.c2 === at) continue;
+        if (m.c1 > at) out.push({ ...m, c1: m.c1 - 1, c2: m.c2 - 1 });
+        else if (m.c2 >= at) { const n = { ...m, c2: m.c2 - 1 }; if (n.c1 !== n.c2 || n.r1 !== n.r2) out.push(n); }
+        else out.push(m);
+      }
+    }
+    out.forEach(m => ws.mergeCells(m.r1, m.c1, m.r2, m.c2));
+    // vùng in
+    const pa = ws.pageSetup && ws.pageSetup.printArea;
+    const pm = pa && String(pa).match(/^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$/);
+    if (pm) {
+      const toN = L => L.split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+      let c2 = toN(pm[3]);
+      if (c2 >= at) c2 += delta;
+      ws.pageSetup.printArea = `${pm[1]}${pm[2]}:${colLetter(c2)}${pm[4]}`;
+    }
+  }
+
+  // Tách "Họ và tên" thành "Họ và chữ lót" | "Tên"
+  function splitColumnExcel(wb, cl) {
+    if (cl.split) return false;
+    const ws = wb.getWorksheet(cl.sheet), nc = cl.cols.name;
+    const w = ws.getColumn(nc).width || 25;
+    shiftColumns(ws, nc + 1, +1);
+    for (let r = 1; r <= ws.rowCount; r++) {
+      const src = ws.getCell(r, nc);
+      if (src.isMerged && src.master.address !== src.address && src.master.col !== nc) continue;
+      ws.getCell(r, nc + 1).style = clone(src.style) || {};
+    }
+    ws.getCell(cl.header, nc).value = "Họ và chữ lót";
+    ws.getCell(cl.header, nc + 1).value = "Tên";
+    for (const x of cl.rows) {
+      const [ho, ten] = splitName(x.name);
+      ws.getCell(x.r, nc).value = ho || null;
+      ws.getCell(x.r, nc + 1).value = ten || null;
+    }
+    ws.getColumn(nc).width = Math.max(Math.round(w * 0.7), 14);
+    ws.getColumn(nc + 1).width = Math.max(Math.round(w * 0.4), 8);
+    return true;
+  }
+
+  // Gộp "Họ và chữ lót" | "Tên" thành "Họ và tên"
+  function mergeColumnExcel(wb, cl) {
+    if (!cl.split) return false;
+    const ws = wb.getWorksheet(cl.sheet), ho = cl.cols.name, ten = cl.cols.ten;
+    const w = (ws.getColumn(ho).width || 16) + (ws.getColumn(ten).width || 8);
+    for (const x of cl.rows) { ws.getCell(x.r, ho).value = x.name || null; ws.getCell(x.r, ten).value = null; }
+    const sub = cl.header !== cl.headerTop;
+    if (sub) { ws.getCell(cl.header, ho).value = null; ws.getCell(cl.header, ten).value = null; }
+    else { ws.getCell(cl.header, ho).value = "Họ và tên"; ws.getCell(cl.header, ten).value = null; }
+    shiftColumns(ws, ten, -1);
+    if (sub) {
+      ws.mergeCells(cl.headerTop, ho, cl.header, ho);
+      ws.getCell(cl.headerTop, ho).value = "Họ và tên";
+    }
+    ws.getColumn(ho).width = w;
+    return true;
+  }
+
   // ---------- Chức năng 2: nhập sổ đăng bộ ----------
   function parseMerge(s) {
     const m = s.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
@@ -219,11 +367,11 @@
   }
 
   function analyseTemplate(wb) {
-    let tpl = null, hr = 0;
+    let tpl = null, hr = 0, hdr = null;
     wb.eachSheet(ws => {
       if (tpl) return;
       const h = findHeader(ws);
-      if (h) { tpl = ws; hr = h.row; }
+      if (h) { tpl = ws; hr = h.row; hdr = h; }
     });
     if (!tpl) throw new Error('Không tìm thấy sheet mẫu có cột "Họ và tên học sinh".');
     const maxC = lastCol(tpl);
@@ -241,6 +389,8 @@
       else if (h.includes("cho o")) cols.cho = c;
       else if (h.includes("vao truong")) { cols.namhoc = c; cols.lop = c + 1; cols.lydo = c + 2; }
     }
+    cols.name = hdr.nameCol;
+    if (hdr.tenCol) cols.ten = hdr.tenCol;
     // dòng học sinh đầu tiên: cột STT là số, cột tên không phải số
     let start = 0;
     for (let r = hr + 1; r <= Math.min(tpl.rowCount, hr + 15); r++) {
@@ -271,7 +421,6 @@
     const { tpl, cols, start, size, proto, maxC } = T;
     const tplName = tpl.name;
     tpl.name = "__mau__" + Date.now();
-    const colLetter = n => { let s = ""; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
     const lastL = colLetter(maxC);
 
     const protoCells = [], protoH = [];
@@ -321,7 +470,9 @@
         for (const m of T.blockMerges) ws.mergeCells(top + m.dr1, m.c1, top + m.dr2, m.c2);
         const set = (c, v) => { if (c && v !== "" && v != null) ws.getCell(top, c).value = v; };
         set(cols.stt, i + 1);
-        set(cols.name, opts.upper === false ? hs.name : hs.name.toLocaleUpperCase("vi"));
+        const nm = opts.upper === false ? hs.name : hs.name.toLocaleUpperCase("vi");
+        if (cols.ten) { const [a, b] = splitName(nm); set(cols.name, a); set(cols.ten, b); }
+        else set(cols.name, nm);
         set(cols.gt, hs.gt);
         set(cols.ns, hs.ns);
         set(cols.noisinh, hs.noisinh);
@@ -356,7 +507,10 @@
     return { report, template: tplName, blockSize: size };
   }
 
-  const API = { plain, compareNames, readClasses, sortWorkbook, buildRegister, analyseTemplate, fmtDate };
+  const API = {
+    plain, compareNames, readClasses, sortWorkbook, buildRegister, analyseTemplate, fmtDate,
+    splitColumnExcel, mergeColumnExcel, splitName, joinName, locateNameHeader, classifyHeader, finishClass, isNum,
+  };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.SDB = API;
 })(typeof window !== "undefined" ? window : globalThis);
