@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sổ Đăng Bộ</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f6f5c">
+<style>
+  :root {
+    --bg: #f4f1ea; --card: #fffdf8; --ink: #22281f; --muted: #6b6f63; --line: #e2dccd;
+    --accent: #1f6f5c; --accent-ink: #fff; --accent-soft: #e3efe9;
+    --warn: #9a5b00; --warn-soft: #fbf0dc; --err: #a33a2a; --ok: #2f7a3d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161a17; --card: #1f2420; --ink: #e9ece4; --muted: #a2a99c; --line: #343b35;
+      --accent: #5bbf9f; --accent-ink: #0f1a15; --accent-soft: #23362e;
+      --warn: #f0b55a; --warn-soft: #3a2f1c; --err: #ff8a78; --ok: #7fd18e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161a17; --card: #1f2420; --ink: #e9ece4; --muted: #a2a99c; --line: #343b35;
+    --accent: #5bbf9f; --accent-ink: #0f1a15; --accent-soft: #23362e;
+    --warn: #f0b55a; --warn-soft: #3a2f1c; --err: #ff8a78; --ok: #7fd18e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 48px; }
+  header h1 { margin: 0; font-size: 28px; letter-spacing: -.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-top: 20px; }
+  .card h2 { margin: 0 0 4px; font-size: 19px; display: flex; gap: 10px; align-items: center; }
+  .step { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+          background: var(--accent); color: var(--accent-ink); font-size: 15px; font-weight: 700; flex: none; }
+  .hint { color: var(--muted); margin: 0 0 14px; font-size: 14.5px; }
+  .drop { display: flex; align-items: center; gap: 14px; border: 2px dashed var(--line); border-radius: 12px;
+          padding: 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop input { display: none; }
+  .drop .ico { font-size: 28px; }
+  .drop b { display: block; }
+  .drop span { color: var(--muted); font-size: 14px; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13.5px; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .warn { color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 2px 8px;
+          display: inline-block; margin: 1px 0; font-size: 13.5px; }
+  .okt { color: var(--ok); font-size: 13.5px; }
+  button.link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font: inherit; font-size: 14px; }
+  ol.names { margin: 6px 0 4px; padding-left: 28px; columns: 2; column-gap: 24px; font-size: 14.5px; }
+  @media (max-width: 560px) { ol.names { columns: 1; } .hide-sm { display: none; } }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 14px 0 4px; font-size: 15px; }
+  .opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 14px 0 4px; }
+  .fields label { font-size: 14px; color: var(--muted); display: grid; gap: 4px; }
+  input[type=text] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                     border-radius: 8px; padding: 8px 10px; }
+  input[type=checkbox] { accent-color: var(--accent); width: 17px; height: 17px; }
+  .btn { margin-top: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 18px;
+         background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .msg { margin-top: 12px; font-size: 15px; }
+  .msg.err { color: var(--err); }
+  .msg.ok { color: var(--ok); }
+  footer { margin-top: 26px; color: var(--muted); font-size: 13.5px; text-align: center; }
+  .rule { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  header.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .tools { display: flex; align-items: center; gap: 10px; }
+  .net { font-size: 13px; border-radius: 999px; padding: 3px 10px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  .net.off { background: var(--warn-soft); color: var(--warn); }
+  .btn.small { margin-top: 0; padding: 7px 12px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Sổ Đăng Bộ</h1>
+      <p>Xếp tên học sinh theo thứ tự ABC và nhập vào sổ đăng bộ theo mẫu của trường.</p>
+    </div>
+    <div class="tools">
+      <span class="net" id="net"></span>
+      <button class="btn small" id="btnInstall" hidden>＋ Cài vào máy</button>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2><span class="step">1</span>Danh sách lớp</h2>
+    <p class="hint">Chọn file Excel danh sách học sinh. Mỗi lớp nằm trên một sheet và có cột “Họ và tên”.</p>
+    <label class="drop" id="dropDs">
+      <input type="file" id="fileDs" accept=".xlsx">
+      <div class="ico">📋</div>
+      <div><b>Bấm để chọn hoặc kéo thả file vào đây</b><span id="nameDs">Chưa chọn file</span></div>
+    </label>
+    <div id="classBox"></div>
+    <div id="sortBox" hidden>
+      <div class="opts">
+        <label><input type="checkbox" id="optDrop"> Bỏ các dòng trống tên</label>
+        <label><input type="checkbox" id="optFooter"> Sửa dòng “Danh sách có … học sinh” theo số thực tế</label>
+      </div>
+      <button class="btn" id="btnSort">⬇ Tải danh sách đã xếp ABC</button>
+      <div class="rule">Cách xếp: theo <b>tên</b>, trùng tên thì xét <b>họ</b> rồi <b>đệm</b>; đúng thứ tự chữ cái tiếng Việt (a ă â b c d đ …), cùng chữ thì xét dấu thanh.</div>
+    </div>
+    <div class="msg" id="msg1"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">2</span>Nhập vào sổ đăng bộ</h2>
+    <p class="hint">Chọn file mẫu sổ đăng bộ (có sheet mẫu với cột “Họ và tên học sinh”). Mỗi lớp được tick ở bước 1 sẽ thành một sheet riêng.</p>
+    <label class="drop" id="dropTpl">
+      <input type="file" id="fileTpl" accept=".xlsx">
+      <div class="ico">📘</div>
+      <div><b>Chọn file mẫu sổ đăng bộ</b><span id="nameTpl">Chưa chọn file</span></div>
+    </label>
+    <div class="fields">
+      <label>Năm học vào trường<input type="text" id="namHoc"></label>
+      <label>Dòng “KHÓA HỌC …” (để trống = giữ như mẫu)<input type="text" id="khoaHoc"></label>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="optUpper" checked> Viết HOA họ tên</label>
+    </div>
+    <button class="btn" id="btnSdb" disabled>⬇ Tạo sổ đăng bộ</button>
+    <div class="msg" id="msg2"></div>
+  </section>
+
+  <footer>File chỉ được xử lý ngay trên máy của thầy cô, không gửi đi đâu. Dùng được cả khi không có mạng.</footer>
+</div>
+
+<script src="exceljs.min.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let dsBuf = null, dsName = "", tplBuf = null, tplName = "", classes = [];
+
+  // ---- Online / offline & cài ứng dụng ----
+  const isWeb = location.protocol === "http:" || location.protocol === "https:";
+  function showNet() {
+    const n = $("net");
+    if (!isWeb) { n.textContent = "Đang chạy từ máy"; n.className = "net"; return; }
+    n.textContent = navigator.onLine ? "● Có mạng" : "● Không có mạng — vẫn dùng được";
+    n.className = "net" + (navigator.onLine ? "" : " off");
+  }
+  addEventListener("online", showNet); addEventListener("offline", showNet); showNet();
+  if (isWeb && "serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(console.warn);
+  let installEvt = null;
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("btnInstall").hidden = false; });
+  $("btnInstall").onclick = async () => {
+    if (!installEvt) return;
+    installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("btnInstall").hidden = true;
+  };
+  addEventListener("appinstalled", () => { $("btnInstall").hidden = true; });
+
+  const now = new Date(), y = now.getFullYear();
+  const nh = now.getMonth() >= 6 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+  $("namHoc").value = nh; $("khoaHoc").value = nh;
+
+  function setMsg(id, text, kind) { const m = $(id); m.textContent = text; m.className = "msg" + (kind ? " " + kind : ""); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  async function loadWb(buf) { const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf.slice(0)); return wb; }
+
+  async function download(wb, filename) {
+    const out = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function baseName(n) { return n.replace(/\.xlsx$/i, ""); }
+
+  function wireDrop(labelId, inputId, onFile) {
+    const lab = $(labelId), inp = $(inputId);
+    inp.addEventListener("change", () => inp.files[0] && onFile(inp.files[0]));
+    ["dragenter", "dragover"].forEach(e => lab.addEventListener(e, ev => { ev.preventDefault(); lab.classList.add("over"); }));
+    ["dragleave", "drop"].forEach(e => lab.addEventListener(e, ev => { ev.preventDefault(); lab.classList.remove("over"); }));
+    lab.addEventListener("drop", ev => { const f = ev.dataTransfer.files[0]; if (f) onFile(f); });
+  }
+
+  function selected() {
+    return classes.filter((c, i) => { const cb = $("cl" + i); return cb && cb.checked; });
+  }
+
+  function refreshBtn() { $("btnSdb").disabled = !(tplBuf && selected().length); $("btnSort").disabled = !selected().length; }
+
+  function renderClasses() {
+    if (!classes.length) {
+      $("classBox").innerHTML = ""; $("sortBox").hidden = true;
+      setMsg("msg1", "Không tìm thấy sheet nào có cột “Họ và tên”.", "err"); return;
+    }
+    const total = classes.reduce((s, c) => s + c.sorted.length, 0);
+    let h = `<table><thead><tr><th style="width:28px"><input type="checkbox" id="clAll" checked title="Chọn tất cả"></th>
+      <th>Lớp</th><th>Số HS</th><th>Cần xem lại</th><th class="hide-sm"></th></tr></thead><tbody>`;
+    classes.forEach((c, i) => {
+      const w = c.warnings.length ? c.warnings.map(x => `<span class="warn">${esc(x)}</span>`).join("<br>") : `<span class="okt">✓ Ổn</span>`;
+      h += `<tr><td><input type="checkbox" id="cl${i}" checked></td><td><b>${esc(c.name)}</b></td>
+        <td class="num">${c.sorted.length}</td><td>${w}</td>
+        <td class="hide-sm"><button class="link" data-i="${i}">Xem thứ tự</button></td></tr>
+        <tr id="pv${i}" hidden><td></td><td colspan="4"><ol class="names">${c.sorted.map(x => `<li>${esc(x.name)}</li>`).join("")}</ol></td></tr>`;
+    });
+    h += `</tbody></table>`;
+    $("classBox").innerHTML = h;
+    $("sortBox").hidden = false;
+    $("classBox").querySelectorAll("button.link").forEach(b => b.onclick = () => {
+      const r = $("pv" + b.dataset.i); r.hidden = !r.hidden; b.textContent = r.hidden ? "Xem thứ tự" : "Ẩn";
+    });
+    $("clAll").onchange = e => { classes.forEach((c, i) => $("cl" + i).checked = e.target.checked); refreshBtn(); };
+    classes.forEach((c, i) => $("cl" + i).onchange = refreshBtn);
+    setMsg("msg1", `Đọc được ${classes.length} lớp, tổng ${total} học sinh.`, "ok");
+    refreshBtn();
+  }
+
+  wireDrop("dropDs", "fileDs", async f => {
+    $("nameDs").textContent = f.name; setMsg("msg1", "Đang đọc file…");
+    try {
+      dsBuf = await f.arrayBuffer(); dsName = f.name;
+      classes = SDB.readClasses(await loadWb(dsBuf));
+      renderClasses();
+    } catch (e) { console.error(e); classes = []; $("classBox").innerHTML = ""; $("sortBox").hidden = true;
+      setMsg("msg1", "Không đọc được file: " + e.message, "err"); refreshBtn(); }
+  });
+
+  wireDrop("dropTpl", "fileTpl", async f => {
+    $("nameTpl").textContent = f.name;
+    try {
+      tplBuf = await f.arrayBuffer(); tplName = f.name;
+      const T = SDB.analyseTemplate(await loadWb(tplBuf));
+      setMsg("msg2", `Mẫu “${T.tpl.name}”: mỗi học sinh chiếm ${T.size} dòng, bắt đầu từ dòng ${T.start}.`, "ok");
+    } catch (e) { console.error(e); tplBuf = null; setMsg("msg2", e.message, "err"); }
+    refreshBtn();
+  });
+
+  $("btnSort").onclick = async () => {
+    const sel = selected(); if (!sel.length) return;
+    setMsg("msg1", "Đang xếp…");
+    try {
+      const wb = await loadWb(dsBuf);
+      const cls = SDB.readClasses(wb).filter(c => sel.some(s => s.sheet === c.sheet));
+      SDB.sortWorkbook(wb, cls, { dropBlank: $("optDrop").checked, fixFooter: $("optFooter").checked });
+      await download(wb, baseName(dsName) + " (xếp ABC).xlsx");
+      setMsg("msg1", `Đã xếp ${cls.length} lớp. File đã được tải về.`, "ok");
+    } catch (e) { console.error(e); setMsg("msg1", "Lỗi: " + e.message, "err"); }
+  };
+
+  $("btnSdb").onclick = async () => {
+    const sel = selected(); if (!sel.length || !tplBuf) return;
+    setMsg("msg2", "Đang tạo sổ đăng bộ…");
+    try {
+      const wb = await loadWb(tplBuf);
+      const r = SDB.buildRegister(wb, sel, {
+        namHoc: $("namHoc").value.trim(), khoaHoc: $("khoaHoc").value.trim(), upper: $("optUpper").checked,
+      });
+      await download(wb, baseName(tplName) + " " + ($("namHoc").value.trim() || "") + " (đã nhập).xlsx");
+      setMsg("msg2", "Đã tạo: " + r.report.map(x => `${x.name} (${x.count} em)`).join(", ") + ". File đã được tải về.", "ok");
+    } catch (e) { console.error(e); setMsg("msg2", "Lỗi: " + e.message, "err"); }
+  };
+})();
+</script>
+</body>
+</html>

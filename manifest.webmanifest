@@ -1,0 +1,14 @@
+{
+  "name": "Sổ Đăng Bộ",
+  "short_name": "Sổ Đăng Bộ",
+  "description": "Xếp tên học sinh theo ABC và nhập vào sổ đăng bộ theo mẫu.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#1f6f5c",
+  "lang": "vi",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
