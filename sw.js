@@ -1,6 +1,6 @@
 // Lưu sẵn các file của trang để dùng được khi mất mạng.
 // Khi sửa trang, tăng số phiên bản để máy tải bản mới.
-const CACHE = "so-dang-bo-v4";
+const CACHE = "so-dang-bo-v5";
 const FILES = ["./", "index.html", "core.js", "word.js", "exceljs.min.js", "jszip.min.js", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", e => {

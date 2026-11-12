@@ -99,6 +99,8 @@
   // Phân loại tiêu đề các cột còn lại
   function classifyHeader(h) {
     if (!h) return null;
+    if (h.includes("dang bo")) return null; // "Sổ đăng bộ" (chữ "bộ" không phải "bố")
+    if (h.length > 70) return null;         // câu hướng dẫn dài, không phải tiêu đề cột
     // thông tin cha / mẹ / người giám hộ
     if (PARENT_RE.test(h)) {
       if (/dien thoai|\bsdt\b|\bdt\b|nam sinh|ngay sinh|cccd|cmnd|can cuoc|email|zalo|dan toc|ton giao|quoc tich/.test(h)) return null;
@@ -113,18 +115,22 @@
     if (h.includes("stt") || h === "so tt" || h === "tt") return "stt";
     if (h.includes("gioi tinh") || h === "nam nu" || h === "nu") return "gt";
     if (h.includes("dan toc")) return "dt";
+    if (h.includes("noi khai sinh")) return "noiks";
     if (h.includes("noi sinh")) return "noisinh";
-    if (h.includes("que quan") || h.includes("ma hoc sinh") || h.includes("ma hs")) return null;
+    if (h.includes("que quan") || h.includes("ma hoc sinh") || h.includes("ma hs") || h.includes("vao truong") || h.includes("can cuoc")) return null;
     if (h.includes("sinh")) return "ns";
-    if (/cho o|dia chi|noi o\b|thuong tru|tam tru|cu tru|noi ở/.test(h)) return "cho";
+    if (h.includes("ho khau") || h.includes("thuong tru")) return "hokhau";
+    if (/cho o|dia chi|noi o\b|tam tru|cu tru/.test(h)) return "cho";
     if (h.includes("ghi chu")) return "note";
     if (h === "lop" || h.startsWith("lop ")) return "lop";
     return null;
   }
 
   // Gán cột theo tiêu đề; "Nghề nghiệp" đứng sau cột cha/mẹ thì thuộc người đó.
+  const MULTI_FIELDS = ["cho", "hokhau", "noisinh", "noiks"];
   function assignColumns(textOf, maxC, h) {
     const cols = {};
+    Object.defineProperty(cols, "more", { value: {}, enumerable: false });
     let lastParent = null;
     for (let c = 1; c <= maxC; c++) {
       if (c === h.nameCol || c === h.tenCol) continue;
@@ -137,6 +143,9 @@
       }
       if (k === "cha" || k === "me" || k === "chame") lastParent = k;
       if (k && !cols[k]) cols[k] = c;
+      // địa chỉ / nơi sinh chia nhiều cột liền nhau (ấp | xã | tỉnh) → ghép lại khi đọc
+      else if (k && MULTI_FIELDS.includes(k) && (cols.more[k] || [cols[k]]).slice(-1)[0] === c - 1)
+        (cols.more[k] = cols.more[k] || [cols[k]]).push(c);
     }
     cols.name = h.nameCol;
     if (h.tenCol) cols.ten = h.tenCol;
@@ -144,6 +153,13 @@
   }
 
   // Ghép chữ tiêu đề nhiều tầng: "Thông tin cha" + "Họ tên" → "thong tin cha ho ten"
+  // Ghép các phần địa chỉ, bỏ ô trống và phần lặp: "Ấp Vĩnh Nghĩa, Xã Vĩnh Hậu, An Giang"
+  function joinParts(list) {
+    const out = [];
+    list.forEach(s => { s = String(s || "").trim(); if (s && !out.some(o => plain(o) === plain(s))) out.push(s); });
+    return out.join(", ");
+  }
+
   function joinHeaderTexts(list) {
     const out = [];
     list.forEach(t => { if (t && out[out.length - 1] !== t) out.push(t); });
@@ -222,6 +238,8 @@
       const h = findHeader(ws);
       if (!h) return;
       const cols = mapColumns(ws, h);
+      // bảng không có cả STT lẫn ngày sinh (VD sheet "Hướng dẫn nhập" của vnEdu) → không phải danh sách học sinh
+      if (!cols.stt && !cols.ns) return;
       const sttAt = r => (cols.stt ? val(ws, r, cols.stt) : null);
       const nameAt = r => cols.ten
         ? joinName(txt(val(ws, r, cols.name)), txt(val(ws, r, cols.ten)))
@@ -240,24 +258,37 @@
         if (sttT && !isNum(sttV)) break;          // "Danh sách có ..."
         if (!sttT && !name) break;                 // hết danh sách
         const g = c => (c ? txt(val(ws, r, c)).trim() : "");
+        const gm = k => joinParts((cols.more[k] || [cols[k]]).map(g));
         rows.push({
           r, name,
           gt: g(cols.gt), dt: g(cols.dt),
           ns: cols.ns ? fmtDate(val(ws, r, cols.ns)) : "",
-          noisinh: g(cols.noisinh), cho: g(cols.cho), chame: g(cols.chame),
+          noisinh: gm("noisinh") || gm("noiks"), cho: gm("cho") || gm("hokhau"), chame: g(cols.chame),
           cha: g(cols.cha), ngheCha: g(cols.ngheCha), me: g(cols.me), ngheMe: g(cols.ngheMe),
           note: g(cols.note), lop: g(cols.lop),
         });
       }
       const last = r - 1;
+      // không có cột STT thì phải có ngày sinh hợp lệ ở phần lớn các dòng (loại sheet hướng dẫn / danh mục)
+      if (/huong dan|danh muc/.test(plain(ws.name))) return;
+      if (!cols.stt && rows.filter(x => dateKey(x.ns)).length * 2 < rows.length) return;
       // dòng "Danh sách có N học sinh"
       let footer = null;
       for (let fr = r; fr <= Math.min(r + 3, ws.rowCount); fr++) {
         const m = plain(txt(val(ws, fr, 1))).match(/co\s+(\d+)\s+hoc sinh/);
         if (m) { footer = { row: fr, count: +m[1] }; break; }
       }
+      // tên lớp: tên sheet nếu giống tên lớp (6A1), không thì tìm "Lớp: 6A1" ở phần đầu trang
+      let lopName = ws.name.trim();
+      if (!/^\d{1,2}\s*[a-z]\s*\d{0,2}$/i.test(lopName)) {
+        for (let rr = 1; rr < h.top; rr++)
+          for (let cc = 1; cc <= Math.min(lastCol(ws), 12); cc++) {
+            const m = plain(txt(val(ws, rr, cc))).match(/\blop\s*:?\s*(\d{1,2}\s*[a-z]\s*\d{0,2})\b/);
+            if (m) { lopName = m[1].replace(/\s+/g, "").toUpperCase(); rr = h.top; break; }
+          }
+      }
       classes.push(finishClass({
-        kind: "excel", name: ws.name.trim(), sheet: ws.name, header: h.row, headerTop: h.top,
+        kind: "excel", name: lopName, sheet: ws.name, header: h.row, headerTop: h.top,
         cols, first, last, rows, footer,
       }));
     });
@@ -472,7 +503,7 @@
       protoCells.push(row);
     }
 
-    const report = [];
+    const report = [], issues = [];
     for (const cl of classes) {
       let sheetName = cl.name;
       if (tplWb.getWorksheet(sheetName)) tplWb.removeWorksheet(tplWb.getWorksheet(sheetName).id);
@@ -507,7 +538,22 @@
         let hs = hs0;
         if (opts.profiles) {
           const p = findProfile(opts.profiles, hs0, cl.name);
-          if (p) { hs = mergeProfile(hs0, p); matched++; } else miss.push(hs0.name);
+          if (p) {
+            hs = mergeProfile(hs0, p); matched++;
+            // ngày sinh theo nguồn lý lịch (VD vnEdu) khi được chọn
+            if (opts.dobFromProfile && dateKey(p.ns) && p.ns !== hs0.ns) {
+              hs.ns = p.ns;
+              issues.push({ lop: cl.name, name: hs0.name, kind: "Ngày sinh khác", detail: `Danh sách: ${hs0.ns || "(trống)"} → lấy theo lý lịch: ${p.ns}` });
+            } else if (p.ns && hs0.ns && p.ns !== hs0.ns)
+              issues.push({ lop: cl.name, name: hs0.name, kind: "Ngày sinh khác", detail: `Danh sách: ${hs0.ns}, lý lịch: ${p.ns} (giữ theo danh sách)` });
+            if (p._flag === "ten") issues.push({ lop: cl.name, name: hs0.name, kind: "Tên viết khác", detail: `Lý lịch ghi: ${p.name}` });
+            if (p._lop && p._lop !== lopKey(cl.name)) issues.push({ lop: cl.name, name: hs0.name, kind: "Khác lớp", detail: `Lý lịch xếp ở lớp ${p._lop.toUpperCase()}` });
+            for (const [f, label] of [["gt", "Giới tính"], ["dt", "Dân tộc"]])
+              if (p[f] && hs0[f] && plain(p[f]) !== plain(hs0[f])) issues.push({ lop: cl.name, name: hs0.name, kind: label + " khác", detail: `Danh sách: ${hs0[f]}, lý lịch: ${p[f]}` });
+          } else {
+            miss.push(hs0.name);
+            issues.push({ lop: cl.name, name: hs0.name, kind: "Chưa có lý lịch", detail: `Ngày sinh ${hs0.ns || "(trống)"}` });
+          }
         }
         const top = start + i * size;
         for (let dr = 0; dr < size; dr++) {
@@ -555,7 +601,7 @@
           }
       });
     }
-    return { report, template: tplName, blockSize: size };
+    return { report, issues, template: tplName, blockSize: size };
   }
 
   // ---------- Lý lịch học sinh: ghép theo họ tên + ngày sinh ----------
@@ -565,12 +611,16 @@
     return m ? m[3] + m[2] + m[1] : "";
   }
   const hasProfile = x => PROFILE_FIELDS.some(f => x[f]);
+  // yyyymmdd: trùng nhau, hoặc chỉ đảo ngày ↔ tháng
+  function sameDate(a, b) {
+    return a === b || (a && b && a.slice(0, 4) === b.slice(0, 4) && a.slice(4, 6) === b.slice(6, 8) && a.slice(6, 8) === b.slice(4, 6));
+  }
 
   const lopKey = s => plain(s).replace(/^lop\s*/, "").replace(/[^a-z0-9]/g, "");
 
   // classes: các lớp/bảng đọc từ file lý lịch (Excel hoặc Word). Lớp lấy từ cột "Lớp", không có thì lấy tên sheet/bảng.
   function buildProfileIndex(classes) {
-    const byKey = new Map(), byName = new Map(), seen = new Set();
+    const byKey = new Map(), byName = new Map(), byLop = new Map(), seen = new Set();
     let n = 0;
     for (const cl of classes)
       for (const x0 of cl.rows) {
@@ -581,8 +631,9 @@
         if (!seen.has(uk)) { seen.add(uk); n++; }
         if (dk) { const k = nk + "|" + dk; byKey.set(k, (byKey.get(k) || []).concat([x])); }
         byName.set(nk, (byName.get(nk) || []).concat([x]));
+        byLop.set(x._lop, (byLop.get(x._lop) || []).concat([x]));
       }
-    return { byKey, byName, count: n };
+    return { byKey, byName, byLop, count: n };
   }
 
   // Tìm lý lịch: ưu tiên trùng họ tên + ngày sinh; nhiều em trùng thì xét thêm lớp;
@@ -608,8 +659,29 @@
       if (a !== undefined) return a;
     }
     const b = idx.byName.get(nk);
-    const cand = b && dk ? b.filter(x => !dateKey(x.ns) || dateKey(x.ns) === dk) : b; // khác ngày sinh → người khác
-    return pick(cand) || null;
+    // khác ngày sinh → người khác (trừ trường hợp gõ đảo ngày/tháng, VD 07/01 ↔ 01/07)
+    const cand = b && dk ? b.filter(x => !dateKey(x.ns) || sameDate(dateKey(x.ns), dk)) : b;
+    const r = pick(cand);
+    if (r) return r;
+    if (!lk) return null;
+    // Cùng lớp + cùng tên, chỉ một em → nhận, ghi chú "khác ngày sinh"
+    const sameClassName = (b || []).filter(x => x._lop === lk);
+    if (sameClassName.length === 1 && (idx.byLop.get(lk) || []).filter(x => nameKeyStr(x.name) === nk).length === 1)
+      return Object.assign(combine(sameClassName), { _flag: "ngaysinh" });
+    // Cùng lớp + cùng ngày sinh, tên chỉ khác cách viết (Nguyễn T ↔ Nguyễn Thị, A Ly ↔ Aly, đảo thứ tự)
+    if (dk) {
+      const loose = (idx.byLop.get(lk) || []).filter(x => sameDate(dateKey(x.ns), dk) && looseName(x.name, hs.name));
+      if (loose.length === 1) return Object.assign(combine(loose), { _flag: "ten" });
+    }
+    return null;
+  }
+
+  function looseName(a, b) {
+    const A = nameKeyStr(a).split(" "), B = nameKeyStr(b).split(" ");
+    if (A.join("") === B.join("")) return true;                               // A Ly ↔ Aly
+    if (A.slice().sort().join(" ") === B.slice().sort().join(" ")) return true; // đảo thứ tự
+    return A.length === B.length && A.every((w, i) => w === B[i] ||           // Nguyễn T ↔ Nguyễn Thị
+      (w.length === 1 && B[i][0] === w) || (B[i].length === 1 && w[0] === B[i]));
   }
 
   // Cảnh báo học sinh trùng họ tên + ngày sinh ở nhiều lớp
