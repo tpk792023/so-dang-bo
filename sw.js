@@ -1,5 +1,5 @@
 // Lưu sẵn các file của trang để dùng được khi mất mạng.
-// Khi sửa trang, tăng số phiên bản để máy tải bản mới.
+// Khi sửa trang, tăng số phiên bản ở đây VÀ số ?v= trong thẻ <script> của index.html.
 const CACHE = "so-dang-bo-v6";
 const FILES = ["./", "index.html", "core.js", "word.js", "exceljs.min.js", "jszip.min.js", "xlsx.full.min.js", "manifest.webmanifest", "icon.svg"];
 
