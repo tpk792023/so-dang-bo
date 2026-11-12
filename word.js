@@ -155,18 +155,28 @@
       const h = S.locateNameHeader(get, Math.min(trs.length, 8), maxG);
       if (!h) return;
       k++;
-      const cols = {};
-      for (let c = 1; c <= maxG; c++) {
-        if (c === h.nameCol || c === h.tenCol) continue;
-        const key = S.classifyHeader(get(h.row, c)) || S.classifyHeader(get(h.top, c));
-        if (key && !cols[key]) cols[key] = c;
-      }
-      if (!cols.stt) cols.stt = 1;
-      cols.name = h.nameCol;
-      if (h.tenCol) cols.ten = h.tenCol;
+      // chữ tiêu đề (kể cả ô gộp ngang/dọc) của cột c qua các dòng tiêu đề
+      const hdrRows = [];
+      for (let r = h.top; r <= h.row; r++) hdrRows.push(r);
+      const nb = cellsByRow[h.row] && cellAt(cellsByRow[h.row], h.nameCol - 1);
+      if (nb && nb.vm === "continue") hdrRows.push(h.row + 1); // tiêu đề 2 tầng
+      const coverText = (r, c) => {
+        const cs = cellsByRow[r - 1]; if (!cs) return "";
+        let cell = cellAt(cs, c - 1);
+        if (!cell) return "";
+        if (cell.vm === "continue") { // lấy ô gốc phía trên
+          for (let rr = r - 2; rr >= 0; rr--) {
+            const up = cellAt(cellsByRow[rr] || [], c - 1);
+            if (up && up.vm !== "continue") { cell = up; break; }
+          }
+        }
+        return S.plain(cellText(cell.tc));
+      };
+      const cols = S.assignColumns(c => S.joinHeaderTexts(hdrRows.map(r => coverText(r, c))), maxG, h);
+      const lastHdr = hdrRows[hdrRows.length - 1];
       const txtAt = (ri, c) => { const cell = c ? cellAt(cellsByRow[ri], c - 1) : null; return cell && cell.start === c - 1 ? cellText(cell.tc) : ""; };
       const nameAt = ri => cols.ten ? S.joinName(txtAt(ri, cols.name), txtAt(ri, cols.ten)) : txtAt(ri, cols.name);
-      let ri = h.row; // dòng ngay sau tiêu đề (0-based)
+      let ri = lastHdr; // dòng ngay sau tiêu đề (0-based)
       for (let s = 0; s < 3 && ri < trs.length; s++) {
         const nm = nameAt(ri), st = txtAt(ri, cols.stt);
         if ((!nm && !S.isNum(st)) || /^\(?\d+\)?$/.test(nm)) ri++; else break;
@@ -179,6 +189,7 @@
           tr: trs[ri], name,
           gt: txtAt(ri, cols.gt), dt: txtAt(ri, cols.dt), ns: cols.ns ? S.fmtDate(txtAt(ri, cols.ns)) : "",
           noisinh: txtAt(ri, cols.noisinh), cho: txtAt(ri, cols.cho), chame: txtAt(ri, cols.chame), note: txtAt(ri, cols.note),
+          cha: txtAt(ri, cols.cha), ngheCha: txtAt(ri, cols.ngheCha), me: txtAt(ri, cols.me), ngheMe: txtAt(ri, cols.ngheMe), lop: txtAt(ri, cols.lop),
           _stt: st,
         });
       }
@@ -187,7 +198,7 @@
         kind: "word", tbl, name: tableTitle(tbl, k), sheet: "bang" + k, header: h.row, headerTop: h.top, cols, rows, footer: null,
       }));
     });
-    return classes;
+    return S.markCrossDuplicates(classes);
   }
 
   // ---------- Xếp ABC ----------

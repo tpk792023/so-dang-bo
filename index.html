@@ -74,6 +74,13 @@
                border-radius: 999px; padding: 5px 12px; background: var(--bg); }
   .seg label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .seg input { accent-color: var(--accent); margin: 0; }
+  .sub { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .subhead { margin-bottom: 2px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  details.miss { margin-top: 8px; font-size: 14.5px; }
+  details.miss summary { cursor: pointer; color: var(--warn); }
+  details.miss li { margin: 2px 0; }
   .tag { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
   header.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .tools { display: flex; align-items: center; gap: 10px; }
@@ -132,6 +139,18 @@
       <div class="ico">📘</div>
       <div><b>Chọn file mẫu sổ đăng bộ</b><span id="nameTpl">Chưa chọn file</span></div>
     </label>
+    <div class="sub">
+      <div class="subhead"><b>Lý lịch học sinh</b> <span class="muted">(không bắt buộc)</span></div>
+      <p class="hint">Để điền <b>nơi sinh, chỗ ở hiện tại, họ tên và nghề nghiệp cha mẹ</b>. Chọn một hoặc nhiều file Excel/Word có các cột này (ví dụ xuất từ phần mềm quản lý, hoặc file mẫu bên dưới đã được GVCN điền). Phần mềm tự ghép từng em theo <b>họ tên + ngày sinh</b> (trùng thì xét thêm lớp).</p>
+      <label class="drop" id="dropLl">
+        <input type="file" id="fileLl" accept=".xlsx,.docx" multiple>
+        <div class="ico">🗂️</div>
+        <div><b>Chọn file lý lịch (chọn được nhiều file)</b><span id="nameLl">Chưa chọn file</span></div>
+      </label>
+      <button class="btn ghost" id="btnMauLl" disabled>⬇ Tải file mẫu lý lịch để GVCN điền</button>
+      <div class="msg" id="msg3"></div>
+      <div id="llMiss"></div>
+    </div>
     <div class="fields">
       <label>Năm học vào trường<input type="text" id="namHoc"></label>
       <label>Dòng “KHÓA HỌC …” (để trống = giữ như mẫu)<input type="text" id="khoaHoc"></label>
@@ -211,6 +230,8 @@
 
   function refreshBtn() {
     $("btnSdb").disabled = !(tplBuf && selected().length);
+    $("btnMauLl").disabled = !selected().length;
+    if (typeof showLlMatch === "function" && llIndex) showLlMatch();
     $("btnSort").disabled = !selected().length || (!$("optSort").checked && colMode() === "keep");
   }
   $("optSort").onchange = refreshBtn;
@@ -266,6 +287,55 @@
     refreshBtn();
   });
 
+  // ---- Lý lịch học sinh ----
+  let llIndex = null, llFiles = [];
+  async function readAnyClasses(file) {
+    const buf = await file.arrayBuffer();
+    if (/\.docx$/i.test(file.name)) return SDBWord.readClassesDocx(await SDBWord.loadDocx(buf));
+    if (/\.xlsx$/i.test(file.name)) return SDB.readClasses(await loadWb(buf));
+    throw new Error(`“${file.name}”: chỉ nhận .xlsx hoặc .docx`);
+  }
+  function showLlMatch() {
+    $("llMiss").innerHTML = "";
+    if (!llIndex) return;
+    const sel = selected();
+    if (!sel.length) { setMsg("msg3", `Đọc được lý lịch của ${llIndex.count} em từ ${llFiles.length} file.`, "ok"); return; }
+    let ok = 0, all = 0; const miss = [];
+    sel.forEach(cl => cl.sorted.forEach(hs => { all++; if (SDB.findProfile(llIndex, hs, cl.name)) ok++; else miss.push([cl.name, hs]); }));
+    setMsg("msg3", `Đọc được lý lịch của ${llIndex.count} em từ ${llFiles.length} file. Ghép được ${ok}/${all} em ở các lớp đã chọn.`, ok === all ? "ok" : "");
+    if (miss.length) {
+      $("llMiss").innerHTML = `<details class="miss"><summary>${miss.length} em chưa có lý lịch (bấm để xem)</summary><ul>` +
+        miss.map(([l, h]) => `<li>${esc(l)} — ${esc(h.name)} ${h.ns ? "(" + esc(h.ns) + ")" : ""}</li>`).join("") +
+        `</ul><div class="rule">Thường do khác cách viết tên/ngày sinh giữa hai file, hoặc file lý lịch thiếu em đó. Các em này vẫn được nhập sổ, chỉ để trống phần lý lịch.</div></details>`;
+    }
+  }
+  async function onLlFiles(files) {
+    files = [...files]; if (!files.length) return;
+    $("nameLl").textContent = files.map(f => f.name).join(", ");
+    setMsg("msg3", "Đang đọc lý lịch…");
+    try {
+      let cls = [];
+      for (const f of files) cls = cls.concat(await readAnyClasses(f));
+      llIndex = SDB.buildProfileIndex(cls); llFiles = files;
+      if (!llIndex.count) { llIndex = null; setMsg("msg3", "Không thấy cột nơi sinh / chỗ ở / cha / mẹ nào có dữ liệu trong file đã chọn.", "err"); return; }
+      showLlMatch();
+    } catch (e) { console.error(e); llIndex = null; setMsg("msg3", "Không đọc được: " + e.message, "err"); }
+  }
+  $("fileLl").addEventListener("change", e => onLlFiles(e.target.files));
+  ["dragenter", "dragover"].forEach(ev => $("dropLl").addEventListener(ev, e => { e.preventDefault(); $("dropLl").classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => $("dropLl").addEventListener(ev, e => { e.preventDefault(); $("dropLl").classList.remove("over"); }));
+  $("dropLl").addEventListener("drop", e => onLlFiles(e.dataTransfer.files));
+
+  $("btnMauLl").onclick = async () => {
+    const sel = selected(); if (!sel.length) return;
+    try {
+      const wb = SDB.makeProfileTemplate(new ExcelJS.Workbook(), sel);
+      const fname = `Mẫu lý lịch HS - ${baseName(dsName)}.xlsx`;
+      await download(wb, fname);
+      setMsg("msg3", `Đã tải file mẫu: ${fname}. Mỗi lớp một sheet, đã ghi sẵn họ tên và ngày sinh.`, "ok");
+    } catch (e) { console.error(e); setMsg("msg3", "Lỗi: " + e.message, "err"); }
+  };
+
   $("btnSort").onclick = async () => {
     const sel = selected(); if (!sel.length) return;
     const doSort = $("optSort").checked, mode = colMode();
@@ -299,9 +369,11 @@
       const wb = await loadWb(tplBuf);
       const r = SDB.buildRegister(wb, sel, {
         namHoc: $("namHoc").value.trim(), khoaHoc: $("khoaHoc").value.trim(), upper: $("optUpper").checked,
+        profiles: llIndex,
       });
       await download(wb, baseName(tplName) + " " + ($("namHoc").value.trim() || "") + " (đã nhập).xlsx");
-      setMsg("msg2", "Đã tạo: " + r.report.map(x => `${x.name} (${x.count} em)`).join(", ") + ". File đã được tải về.", "ok");
+      const per = r.report.map(x => `${x.name} (${x.count} em${llIndex ? ", có lý lịch " + x.matched : ""})`).join(", ");
+      setMsg("msg2", "Đã tạo: " + per + ". File đã được tải về." + (llIndex ? "" : " Chưa chọn file lý lịch nên cột nơi sinh, chỗ ở, cha mẹ để trống (trừ khi danh sách lớp đã có sẵn)."), "ok");
     } catch (e) { console.error(e); setMsg("msg2", "Lỗi: " + e.message, "err"); }
   };
 })();

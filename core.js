@@ -90,7 +90,8 @@
   // ---------- Đọc danh sách lớp ----------
   // ---- Nhận diện tiêu đề cột (dùng chung cho Excel và Word) ----
   // "Họ và tên", "Họ tên", "Họ và tên học sinh", "Họ và" (thiếu chữ tên)
-  function isFullHeader(t) { return (/^ho (va )?ten( |$)/.test(t) && !/(dem|lot)$/.test(t)) || t === "ho va"; }
+  const PARENT_RE = /\bcha\b|\bme\b|\bbo\b|phu huynh|giam ho|do dau/;
+  function isFullHeader(t) { return (/^ho (va )?ten( |$)/.test(t) && !/(dem|lot)$/.test(t) && !PARENT_RE.test(t)) || t === "ho va"; }
   // "Họ", "Họ và", "Họ đệm", "Họ và tên đệm", "Họ và chữ lót"
   function isHoHeader(t) { return t === "ho" || t === "ho va" || (/^ho /.test(t) && /(dem|lot)$/.test(t)); }
   function isTenHeader(t) { return t === "ten" || t === "ten hoc sinh"; }
@@ -98,16 +99,58 @@
   // Phân loại tiêu đề các cột còn lại
   function classifyHeader(h) {
     if (!h) return null;
+    // thông tin cha / mẹ / người giám hộ
+    if (PARENT_RE.test(h)) {
+      if (/dien thoai|\bsdt\b|\bdt\b|nam sinh|ngay sinh|cccd|cmnd|can cuoc|email|zalo|dan toc|ton giao|quoc tich/.test(h)) return null;
+      const cha = /\bcha\b|\bbo\b/.test(h), me = /\bme\b/.test(h);
+      if (h.includes("nghe")) return cha && !me ? "ngheCha" : me && !cha ? "ngheMe" : "nghe";
+      if (cha && me) return "chame";
+      if (cha) return "cha";
+      if (me) return "me";
+      return "chame"; // phụ huynh / người giám hộ
+    }
+    if (h.includes("nghe nghiep") || h === "nghe") return "nghe";
     if (h.includes("stt") || h === "so tt" || h === "tt") return "stt";
     if (h.includes("gioi tinh") || h === "nam nu" || h === "nu") return "gt";
     if (h.includes("dan toc")) return "dt";
     if (h.includes("noi sinh")) return "noisinh";
+    if (h.includes("que quan") || h.includes("ma hoc sinh") || h.includes("ma hs")) return null;
     if (h.includes("sinh")) return "ns";
-    if (h.includes("cho o") || h.includes("dia chi")) return "cho";
-    if (/\bcha\b|\bme\b/.test(h)) return "chame";
+    if (/cho o|dia chi|noi o\b|thuong tru|tam tru|cu tru|noi ở/.test(h)) return "cho";
     if (h.includes("ghi chu")) return "note";
+    if (h === "lop" || h.startsWith("lop ")) return "lop";
     return null;
   }
+
+  // Gán cột theo tiêu đề; "Nghề nghiệp" đứng sau cột cha/mẹ thì thuộc người đó.
+  function assignColumns(textOf, maxC, h) {
+    const cols = {};
+    let lastParent = null;
+    for (let c = 1; c <= maxC; c++) {
+      if (c === h.nameCol || c === h.tenCol) continue;
+      let k = classifyHeader(textOf(c));
+      if (k === "nghe") {
+        if (lastParent === "cha") k = "ngheCha";
+        else if (lastParent === "me") k = "ngheMe";
+        else if (lastParent === "chame") k = cols.ngheCha ? "ngheMe" : "ngheCha";
+        else k = null;
+      }
+      if (k === "cha" || k === "me" || k === "chame") lastParent = k;
+      if (k && !cols[k]) cols[k] = c;
+    }
+    cols.name = h.nameCol;
+    if (h.tenCol) cols.ten = h.tenCol;
+    return cols;
+  }
+
+  // Ghép chữ tiêu đề nhiều tầng: "Thông tin cha" + "Họ tên" → "thong tin cha ho ten"
+  function joinHeaderTexts(list) {
+    const out = [];
+    list.forEach(t => { if (t && out[out.length - 1] !== t) out.push(t); });
+    return out.join(" ");
+  }
+
+  const PROFILE_FIELDS = ["noisinh", "cho", "cha", "ngheCha", "me", "ngheMe", "chame"];
 
   // Tìm cột họ tên trên một lưới ô: get(r, c) trả về chữ đã bỏ dấu.
   // Kết quả: { row (dòng tiêu đề cuối), top (dòng tiêu đề đầu), nameCol, tenCol? }
@@ -134,18 +177,14 @@
   }
 
   function mapColumns(ws, h) {
-    const cols = {};
-    const maxC = lastCol(ws);
-    for (let c = 1; c <= maxC; c++) {
-      if (c === h.nameCol || c === h.tenCol) continue;
-      // ô tiêu đề gộp dọc: lấy giá trị ô gốc
-      const k = classifyHeader(plain(txt(ws.getCell(h.row, c).value))) || classifyHeader(plain(txt(ws.getCell(h.top, c).value)));
-      if (k && !cols[k]) cols[k] = c;
-    }
-    if (!cols.stt) cols.stt = 1;
-    cols.name = h.nameCol;
-    if (h.tenCol) cols.ten = h.tenCol;
-    return cols;
+    // các dòng tiêu đề: từ h.top tới h.row, thêm dòng dưới nếu ô họ tên ở đó thuộc vùng gộp (tiêu đề 2 tầng)
+    const rows = [];
+    for (let r = h.top; r <= h.row; r++) rows.push(r);
+    const below = ws.getCell(h.row + 1, h.nameCol);
+    if (below.isMerged && below.master.address !== below.address) rows.push(h.row + 1);
+    // ô gộp: lấy giá trị ô gốc
+    const textOf = c => joinHeaderTexts(rows.map(r => plain(txt(ws.getCell(r, c).value))));
+    return assignColumns(textOf, lastCol(ws), h);
   }
 
   function splitName(full) {
@@ -183,6 +222,7 @@
       const h = findHeader(ws);
       if (!h) return;
       const cols = mapColumns(ws, h);
+      const sttAt = r => (cols.stt ? val(ws, r, cols.stt) : null);
       const nameAt = r => cols.ten
         ? joinName(txt(val(ws, r, cols.name)), txt(val(ws, r, cols.ten)))
         : txt(val(ws, r, cols.name)).replace(/\s+/g, " ").trim();
@@ -190,11 +230,11 @@
       // bỏ qua dòng tiêu đề gộp (trống) và dòng đánh số cột (1) (2) (3)…
       for (let k = 0; k < 3; k++) {
         const nm = nameAt(r);
-        if ((!nm && !isNum(val(ws, r, cols.stt))) || /^\(?\d+\)?$/.test(nm)) r++; else break;
+        if ((!nm && !isNum(sttAt(r))) || /^\(?\d+\)?$/.test(nm)) r++; else break;
       }
       const first = r, rows = [];
       for (; r <= ws.rowCount; r++) {
-        const sttV = val(ws, r, cols.stt);
+        const sttV = sttAt(r);
         const name = nameAt(r);
         const sttT = txt(sttV).trim();
         if (sttT && !isNum(sttV)) break;          // "Danh sách có ..."
@@ -205,7 +245,8 @@
           gt: g(cols.gt), dt: g(cols.dt),
           ns: cols.ns ? fmtDate(val(ws, r, cols.ns)) : "",
           noisinh: g(cols.noisinh), cho: g(cols.cho), chame: g(cols.chame),
-          note: g(cols.note),
+          cha: g(cols.cha), ngheCha: g(cols.ngheCha), me: g(cols.me), ngheMe: g(cols.ngheMe),
+          note: g(cols.note), lop: g(cols.lop),
         });
       }
       const last = r - 1;
@@ -220,7 +261,7 @@
         cols, first, last, rows, footer,
       }));
     });
-    return classes;
+    return markCrossDuplicates(classes);
   }
 
   // ---------- Chức năng 1: xếp ABC ngay trong file danh sách ----------
@@ -460,7 +501,14 @@
       if (T.khoaCell && opts.khoaHoc) ws.getCell(T.khoaCell.r, T.khoaCell.c).value = "KHÓA HỌC " + opts.khoaHoc;
 
       const list = cl.sorted;
-      list.forEach((hs, i) => {
+      const miss = [];
+      let matched = 0;
+      list.forEach((hs0, i) => {
+        let hs = hs0;
+        if (opts.profiles) {
+          const p = findProfile(opts.profiles, hs0, cl.name);
+          if (p) { hs = mergeProfile(hs0, p); matched++; } else miss.push(hs0.name);
+        }
         const top = start + i * size;
         for (let dr = 0; dr < size; dr++) {
           const row = ws.getRow(top + dr);
@@ -478,7 +526,10 @@
         set(cols.noisinh, hs.noisinh);
         set(cols.dt, hs.dt);
         set(cols.cho, hs.cho);
-        set(cols.chame, hs.chame);
+        // cột cha mẹ: mỗi dòng một ý (tên cha / nghề cha / tên mẹ / nghề mẹ)
+        parentLines(hs, size).forEach((line, dr) => {
+          if (cols.chame && line) ws.getCell(top + dr, cols.chame).value = line;
+        });
         set(cols.namhoc, opts.namHoc);
         set(cols.lop, cl.name);
         set(cols.lydo, plain(hs.note).includes("chuyen den") ? "Chuyển đến" : "Tuyển sinh");
@@ -486,7 +537,7 @@
       const last = start + list.length * size - 1;
       ws.pageSetup.printArea = `A1:${lastL}${Math.max(last, start)}`;
       ws.pageSetup.printTitlesRow = `${T.hr}:${start - 1}`;
-      report.push({ name: sheetName, count: list.length });
+      report.push({ name: sheetName, count: list.length, matched, miss });
     }
     tplWb.removeWorksheet(tpl.id);
 
@@ -507,9 +558,146 @@
     return { report, template: tplName, blockSize: size };
   }
 
+  // ---------- Lý lịch học sinh: ghép theo họ tên + ngày sinh ----------
+  function nameKeyStr(n) { return plain(n).replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim(); }
+  function dateKey(d) {
+    const m = String(d || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? m[3] + m[2] + m[1] : "";
+  }
+  const hasProfile = x => PROFILE_FIELDS.some(f => x[f]);
+
+  const lopKey = s => plain(s).replace(/^lop\s*/, "").replace(/[^a-z0-9]/g, "");
+
+  // classes: các lớp/bảng đọc từ file lý lịch (Excel hoặc Word). Lớp lấy từ cột "Lớp", không có thì lấy tên sheet/bảng.
+  function buildProfileIndex(classes) {
+    const byKey = new Map(), byName = new Map(), seen = new Set();
+    let n = 0;
+    for (const cl of classes)
+      for (const x0 of cl.rows) {
+        if (!x0.name || !hasProfile(x0)) continue;
+        const x = Object.assign({}, x0, { _lop: lopKey(x0.lop || cl.name) });
+        const nk = nameKeyStr(x.name), dk = dateKey(x.ns);
+        const uk = nk + "|" + dk + "|" + x._lop;
+        if (!seen.has(uk)) { seen.add(uk); n++; }
+        if (dk) { const k = nk + "|" + dk; byKey.set(k, (byKey.get(k) || []).concat([x])); }
+        byName.set(nk, (byName.get(nk) || []).concat([x]));
+      }
+    return { byKey, byName, count: n };
+  }
+
+  // Tìm lý lịch: ưu tiên trùng họ tên + ngày sinh; nhiều em trùng thì xét thêm lớp;
+  // chỉ dùng riêng họ tên khi không thể nhầm.
+  function findProfile(idx, hs, lop) {
+    const nk = nameKeyStr(hs.name), dk = dateKey(hs.ns), lk = lopKey(lop || "");
+    // Nhiều dòng cùng một em (có trong nhiều file) → gộp thông tin lại.
+    const combine = group => group.reduce((acc, x) => {
+      for (const f of PROFILE_FIELDS.concat(["gt", "dt", "ns"])) if (!acc[f] && x[f]) acc[f] = x[f];
+      return acc;
+    }, Object.assign({}, group[0]));
+    const pick = list => {
+      if (!list || !list.length) return undefined;
+      let group = lk ? list.filter(x => x._lop === lk) : [];
+      if (!group.length) {
+        if (new Set(list.map(x => x._lop)).size === 1) group = list;
+        else return null; // có nhưng không phân biệt được em nào
+      }
+      return combine(group);
+    };
+    if (dk) {
+      const a = pick(idx.byKey.get(nk + "|" + dk));
+      if (a !== undefined) return a;
+    }
+    const b = idx.byName.get(nk);
+    const cand = b && dk ? b.filter(x => !dateKey(x.ns) || dateKey(x.ns) === dk) : b; // khác ngày sinh → người khác
+    return pick(cand) || null;
+  }
+
+  // Cảnh báo học sinh trùng họ tên + ngày sinh ở nhiều lớp
+  function markCrossDuplicates(classes) {
+    const seen = new Map();
+    classes.forEach(cl => cl.rows.forEach(x => {
+      if (!x.name || !dateKey(x.ns)) return;
+      const k = nameKeyStr(x.name) + "|" + dateKey(x.ns);
+      seen.set(k, (seen.get(k) || []).concat([[cl, x]]));
+    }));
+    for (const list of seen.values()) {
+      const lops = [...new Set(list.map(([cl]) => cl.name))];
+      if (lops.length < 2) continue;
+      for (const [cl, x] of list) {
+        const others = lops.filter(l => l !== cl.name).join(", ");
+        cl.warnings.push(`${x.name} (${x.ns}) cũng có trong lớp ${others}`);
+      }
+    }
+    return classes;
+  }
+
+  function mergeProfile(hs, p) {
+    const out = Object.assign({}, hs);
+    for (const f of PROFILE_FIELDS.concat(["gt", "dt", "ns"])) if (!out[f] && p[f]) out[f] = p[f];
+    return out;
+  }
+
+  function parentLines(hs, size) {
+    let lines;
+    if (hs.cha || hs.ngheCha || hs.me || hs.ngheMe) lines = [hs.cha, hs.ngheCha, hs.me, hs.ngheMe].map(x => x || "");
+    else if (hs.chame) lines = [hs.chame];
+    else return [];
+    if (lines.length <= size) return lines;
+    if (size >= 2) {
+      const j = (a, b) => [a, b].filter(Boolean).join(" - ");
+      return [j(lines[0], lines[1]), j(lines[2], lines[3])];
+    }
+    return [lines.filter(Boolean).join("; ")];
+  }
+
+  // ---------- File mẫu lý lịch để giáo viên chủ nhiệm điền ----------
+  const PROFILE_HEADERS = [
+    ["STT", 6], ["Họ và tên", 26], ["Ngày sinh", 12], ["Giới tính", 9], ["Dân tộc", 9],
+    ["Nơi sinh", 22], ["Chỗ ở hiện tại", 34], ["Họ tên cha", 22], ["Nghề nghiệp cha", 15],
+    ["Họ tên mẹ", 22], ["Nghề nghiệp mẹ", 15], ["Ghi chú", 14],
+  ];
+  function makeProfileTemplate(wb, classes) {
+    const thin = { style: "thin", color: { argb: "FF808080" } };
+    const border = { top: thin, left: thin, bottom: thin, right: thin };
+    for (const cl of classes) {
+      const ws = wb.addWorksheet(cl.name, { views: [{ state: "frozen", ySplit: 3, xSplit: 2 }],
+        pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+      ws.mergeCells(1, 1, 1, PROFILE_HEADERS.length);
+      const t = ws.getCell(1, 1);
+      t.value = "LÝ LỊCH HỌC SINH LỚP " + cl.name;
+      t.font = { name: "Times New Roman", size: 14, bold: true };
+      t.alignment = { horizontal: "center" };
+      ws.getCell(2, 1).value = "Thầy cô điền các cột còn trống. Giữ nguyên Họ và tên và Ngày sinh để phần mềm ghép đúng học sinh.";
+      ws.getCell(2, 1).font = { name: "Times New Roman", size: 11, italic: true, color: { argb: "FF7A5A00" } };
+      PROFILE_HEADERS.forEach(([h, w], i) => {
+        const c = ws.getCell(3, i + 1);
+        c.value = h; ws.getColumn(i + 1).width = w;
+        c.font = { name: "Times New Roman", size: 12, bold: true };
+        c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE3EFE9" } };
+        c.border = border;
+      });
+      ws.getRow(3).height = 32;
+      cl.sorted.forEach((x, i) => {
+        const v = [i + 1, x.name, x.ns, x.gt, x.dt, x.noisinh, x.cho, x.cha, x.ngheCha, x.me, x.ngheMe, ""];
+        v.forEach((val, j) => {
+          const c = ws.getCell(4 + i, j + 1);
+          c.value = val || null;
+          c.font = { name: "Times New Roman", size: 12, bold: j === 1 };
+          c.alignment = { vertical: "middle", wrapText: j >= 5, horizontal: j === 0 || j === 2 ? "center" : "left" };
+          c.border = border;
+        });
+      });
+      ws.pageSetup.printTitlesRow = "3:3";
+    }
+    return wb;
+  }
+
   const API = {
     plain, compareNames, readClasses, sortWorkbook, buildRegister, analyseTemplate, fmtDate,
     splitColumnExcel, mergeColumnExcel, splitName, joinName, locateNameHeader, classifyHeader, finishClass, isNum,
+    assignColumns, joinHeaderTexts, buildProfileIndex, findProfile, mergeProfile, makeProfileTemplate, PROFILE_FIELDS,
+    markCrossDuplicates,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.SDB = API;
